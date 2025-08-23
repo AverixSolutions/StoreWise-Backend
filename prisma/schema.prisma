@@ -1,0 +1,55 @@
+// backend/prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  USER
+}
+
+model User {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  password  String
+  role      Role     @default(USER)
+  isActive  Boolean  @default(true)
+  licenseId String?
+  license   License? @relation(fields: [licenseId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions Session[]
+}
+
+model License {
+  id                    String   @id @default(uuid())
+  name                  String
+  maxUsers              Int
+  maxConcurrentSessions Int      @default(1)
+  activeUntil           DateTime
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  users User[]
+}
+
+model Session {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+  revoked    Boolean   @default(false)
+  deviceInfo String?
+  ip         String?
+
+  @@index([userId])
+}
