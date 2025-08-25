@@ -1,4 +1,4 @@
-// backend/prisma/schema.prisma
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -21,7 +21,7 @@ model User {
   role      Role     @default(USER)
   isActive  Boolean  @default(true)
   licenseId String?
-  license   License? @relation(fields: [licenseId], references: [id])
+  license   License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -29,27 +29,41 @@ model User {
 }
 
 model License {
-  id                    String   @id @default(uuid())
-  name                  String
-  maxUsers              Int
-  maxConcurrentSessions Int      @default(1)
-  activeUntil           DateTime
-  isActive              Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id          String   @id
+  name        String
+  maxUsers    Int      @default(1)
+  activeUntil DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  users User[]
+  users      User[]
+  roleLimits LicenseRoleLimit[]
+}
+
+model LicenseRoleLimit {
+  id         String   @id @default(uuid())
+  licenseId  String
+  role       Role
+  maxScreens Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  license License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  @@unique([licenseId, role])
 }
 
 model Session {
-  id         String    @id @default(uuid())
+  id         String   @id @default(uuid())
   userId     String
-  user       User      @relation(fields: [userId], references: [id])
-  createdAt  DateTime  @default(now())
-  expiresAt  DateTime?
-  revoked    Boolean   @default(false)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime @default(dbgenerated("now() + interval '1 year'"))
+  revoked    Boolean  @default(false)
   deviceInfo String?
   ip         String?
 
+  @@unique([userId, deviceInfo])
   @@index([userId])
 }
