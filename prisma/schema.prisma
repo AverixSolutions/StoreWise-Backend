@@ -14,6 +14,26 @@ enum Role {
   USER
 }
 
+enum SaleType {
+  DIRECT
+  FRANCHISE
+}
+
+enum Unit {
+  KG
+  NOS
+  LTR
+  MTR
+}
+
+enum TaxPercent {
+  NT
+  P5
+  P12
+  P18
+  P28
+}
+
 model User {
   id        String   @id @default(uuid())
   userId    String   @unique
@@ -26,6 +46,7 @@ model User {
   updatedAt DateTime @updatedAt
 
   sessions Session[]
+  Purchase Purchase[]
 }
 
 model License {
@@ -34,11 +55,36 @@ model License {
   maxUsers    Int      @default(1)
   activeUntil DateTime
   isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  saleType           SaleType @default(DIRECT)
+  customerName       String
+  customerPhone      String
+  amountPaid         Decimal  @db.Decimal(10, 2)
+  franchiseId        String?
+  marginForUs        Decimal  @db.Decimal(10, 2)
+  marginForFranchise Decimal  @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   users      User[]
   roleLimits LicenseRoleLimit[]
+
+  franchise Franchise? @relation(fields: [franchiseId], references: [id])
+
+  products  Product[]
+  purchases Purchase[]
+}
+
+model Franchise {
+  id          String    @id @default(uuid())
+  name        String
+  contactName String
+  phone       String
+  email       String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  licenses    License[]
 }
 
 model LicenseRoleLimit {
@@ -66,4 +112,77 @@ model Session {
 
   @@unique([userId, deviceInfo])
   @@index([userId])
+}
+
+model Product {
+  id         String     @id @default(uuid())
+  licenseId  String
+  code       String
+  codeNumber Int
+  name       String
+  brand      String?
+  category   String?
+  unit       Unit
+  tax        TaxPercent
+  hsn        String?
+  costPrice  Decimal    @db.Decimal(10, 2)
+  salePrice  Decimal?   @db.Decimal(10, 2)
+  stock      Int        @default(0)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  license   License        @relation(fields: [licenseId], references: [id])
+  purchases PurchaseItem[]
+
+  isSynced Boolean   @default(false)
+  syncedAt DateTime?
+
+  @@index([licenseId, code])
+  @@index([licenseId, name])
+  @@index([isSynced])
+}
+
+model Purchase {
+  id           String   @id @default(uuid())
+  userId       String
+  licenseId    String
+  purchaseDate DateTime @default(now())
+  totalAmount  Decimal  @db.Decimal(10, 2)
+  discount     Decimal? @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+
+  user    User           @relation(fields: [userId], references: [id])
+  license License        @relation(fields: [licenseId], references: [id])
+  items   PurchaseItem[]
+
+  isSynced Boolean   @default(false)
+  syncedAt DateTime?
+
+  @@index([licenseId, purchaseDate])
+  @@index([isSynced])
+}
+
+model PurchaseItem {
+  id         String     @id @default(uuid())
+  purchaseId String
+  productId  String
+  quantity   Int
+  unit       Unit
+  rate       Decimal    @db.Decimal(10, 2)
+  taxPercent TaxPercent
+  taxAmount  Decimal    @db.Decimal(10, 2)
+  discount   Decimal?   @db.Decimal(10, 2)
+  salePrice  Decimal?   @db.Decimal(10, 2)
+  profit     Decimal?   @db.Decimal(10, 2)
+  totalCost  Decimal    @db.Decimal(10, 2)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  isSynced Boolean   @default(false)
+  syncedAt DateTime?
+
+  @@index([isSynced])
 }

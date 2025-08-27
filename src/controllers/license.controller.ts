@@ -6,7 +6,38 @@ import { nanoid } from "nanoid";
 // CREATE LICENSE
 export const createLicense = async (req: Request, res: Response) => {
   try {
-    const { name, maxUsers = 1, activeUntil, roleLimits } = req.body;
+    const {
+      name,
+      maxUsers = 1,
+      activeUntil,
+      roleLimits,
+      customerName,
+      customerPhone,
+      amountPaid,
+      saleType = "DIRECT",
+      franchiseId,
+    } = req.body;
+
+    if (!customerName || !customerPhone || !amountPaid) {
+      return res
+        .status(400)
+        .json({ error: "Customer details and amount are required" });
+    }
+
+    if (saleType === "FRANCHISE") {
+      if (!franchiseId) {
+        return res
+          .status(400)
+          .json({ error: "Franchise ID is required for FRANCHISE sales" });
+      }
+
+      const franchise = await prisma.franchise.findUnique({
+        where: { id: franchiseId },
+      });
+      if (!franchise) {
+        return res.status(404).json({ error: "Franchise not found" });
+      }
+    }
 
     const expiryDate = activeUntil
       ? new Date(activeUntil)
@@ -25,12 +56,27 @@ export const createLicense = async (req: Request, res: Response) => {
       6
     ).toUpperCase()}`;
 
+    let marginForUs = amountPaid;
+    let marginForFranchise = 0;
+
+    if (saleType === "FRANCHISE" && franchiseId) {
+      marginForUs = Number((Number(amountPaid) * 0.4).toFixed(2));
+      marginForFranchise = Number((Number(amountPaid) * 0.6).toFixed(2));
+    }
+
     const license = await prisma.license.create({
       data: {
         id: licenseId,
         name,
         maxUsers,
         activeUntil: expiryDate,
+        saleType,
+        customerName,
+        customerPhone,
+        amountPaid,
+        franchiseId: saleType === "FRANCHISE" ? franchiseId : null,
+        marginForUs,
+        marginForFranchise,
         roleLimits: {
           create: finalRoleLimits.map((rl: any) => ({
             role: rl.role,
@@ -38,7 +84,7 @@ export const createLicense = async (req: Request, res: Response) => {
           })),
         },
       },
-      include: { roleLimits: true },
+      include: { roleLimits: true, franchise: true },
     });
 
     res.json(license);
@@ -52,7 +98,7 @@ export const createLicense = async (req: Request, res: Response) => {
 export const getLicenses = async (req: Request, res: Response) => {
   try {
     const licenses = await prisma.license.findMany({
-      include: { users: true, roleLimits: true },
+      include: { users: true, roleLimits: true, franchise: true },
     });
     res.json(licenses);
   } catch (err) {
@@ -66,7 +112,7 @@ export const getLicenseById = async (req: Request, res: Response) => {
     const { id } = req.params;
     const license = await prisma.license.findUnique({
       where: { id },
-      include: { users: true, roleLimits: true },
+      include: { users: true, roleLimits: true, franchise: true },
     });
 
     if (!license) return res.status(404).json({ error: "License not found" });
@@ -81,7 +127,45 @@ export const getLicenseById = async (req: Request, res: Response) => {
 export const updateLicense = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, maxUsers, activeUntil, roleLimits } = req.body;
+    const {
+      name,
+      maxUsers,
+      activeUntil,
+      roleLimits,
+      customerName,
+      customerPhone,
+      amountPaid,
+      saleType,
+      franchiseId,
+    } = req.body;
+
+    if (saleType === "FRANCHISE") {
+      if (!franchiseId) {
+        return res
+          .status(400)
+          .json({ error: "Franchise ID is required for FRANCHISE sales" });
+      }
+
+      const franchise = await prisma.franchise.findUnique({
+        where: { id: franchiseId },
+      });
+      if (!franchise) {
+        return res.status(404).json({ error: "Franchise not found" });
+      }
+    }
+
+    let marginForUs: any = undefined;
+    let marginForFranchise: any = undefined;
+
+    if (amountPaid && saleType) {
+      if (saleType === "DIRECT") {
+        marginForUs = amountPaid;
+        marginForFranchise = 0;
+      } else if (saleType === "FRANCHISE" && franchiseId) {
+        marginForUs = (Number(amountPaid) * 0.4).toFixed(2) as any;
+        marginForFranchise = (Number(amountPaid) * 0.6).toFixed(2) as any;
+      }
+    }
 
     const license = await prisma.license.update({
       where: { id },
@@ -89,6 +173,13 @@ export const updateLicense = async (req: Request, res: Response) => {
         name,
         maxUsers,
         activeUntil: activeUntil ? new Date(activeUntil) : undefined,
+        customerName,
+        customerPhone,
+        amountPaid,
+        saleType,
+        franchiseId: saleType === "FRANCHISE" ? franchiseId : null,
+        marginForUs,
+        marginForFranchise,
         roleLimits: roleLimits
           ? {
               deleteMany: {},
@@ -99,7 +190,7 @@ export const updateLicense = async (req: Request, res: Response) => {
             }
           : undefined,
       },
-      include: { roleLimits: true },
+      include: { roleLimits: true, franchise: true },
     });
 
     res.json(license);
