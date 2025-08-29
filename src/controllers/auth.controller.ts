@@ -38,7 +38,7 @@ export const login = async (req: Request, res: Response) => {
       licenseId: user.licenseId,
       licenseName: user.license?.name,
     };
-    const token = jwt.sign(payload, env.JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign(payload, env.JWT_SECRET, { expiresIn: "90d" });
 
     const ip =
       req.headers["x-forwarded-for"]?.toString().split(",")[0] ||

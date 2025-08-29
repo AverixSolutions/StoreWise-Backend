@@ -5,6 +5,7 @@ import licenseRoutes from "./routes/license.routes";
 import userRoutes from "./routes/user.routes";
 import authRoutes from "./routes/auth.routes";
 import franchiseRoutes from "./routes/franchise.routes";
+import syncProductRoutes from "./routes/sync.products.routes";
 
 const app = express();
 app.use(cors());
@@ -26,5 +27,8 @@ app.use("/api/users", userRoutes);
 
 // Auth Routes
 app.use("/api/auth", authRoutes);
+
+// Sync Product Routes
+app.use("/api/sync/product", syncProductRoutes);
 
 export default app;

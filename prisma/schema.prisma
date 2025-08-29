@@ -131,12 +131,16 @@ model Product {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
+  deletedAt DateTime?
+
   license   License        @relation(fields: [licenseId], references: [id])
   purchases PurchaseItem[]
 
   isSynced Boolean   @default(false)
   syncedAt DateTime?
 
+  @@unique([licenseId, code])
+  @@unique([licenseId, codeNumber])
   @@index([licenseId, code])
   @@index([licenseId, name])
   @@index([isSynced])
