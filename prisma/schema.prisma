@@ -129,7 +129,7 @@ model Product {
   salePrice  Decimal?   @db.Decimal(10, 2)
   stock      Int        @default(0)
   createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  updatedAt  DateTime
 
   deletedAt DateTime?
 
@@ -180,7 +180,7 @@ model PurchaseItem {
   profit     Decimal?   @db.Decimal(10, 2)
   totalCost  Decimal    @db.Decimal(10, 2)
   createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  updatedAt  DateTime
 
   purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product  Product  @relation(fields: [productId], references: [id])

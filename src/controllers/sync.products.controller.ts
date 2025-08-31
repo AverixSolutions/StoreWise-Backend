@@ -94,6 +94,7 @@ export async function pushProducts(req: any, res: Response) {
               salePrice: p.salePrice ?? null,
               stock: p.stock,
               createdAt: p.createdAt,
+              updatedAt: p.updatedAt,
               deletedAt: p.deletedAt ?? null,
             },
           });
@@ -123,6 +124,7 @@ export async function pushProducts(req: any, res: Response) {
             costPrice: p.costPrice,
             salePrice: p.salePrice ?? null,
             stock: p.stock,
+            updatedAt: p.updatedAt,
             deletedAt: p.deletedAt ?? null,
           },
         });
