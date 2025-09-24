@@ -119,6 +119,7 @@ model Product {
   licenseId  String
   code       String
   codeNumber Int
+  barcode    String?
   name       String
   brand      String?
   category   String?
@@ -141,46 +142,60 @@ model Product {
 
   @@unique([licenseId, code])
   @@unique([licenseId, codeNumber])
+  @@unique([licenseId, barcode])
   @@index([licenseId, code])
   @@index([licenseId, name])
   @@index([isSynced])
 }
 
 model Purchase {
-  id           String   @id @default(uuid())
-  userId       String
-  licenseId    String
-  purchaseDate DateTime @default(now())
-  totalAmount  Decimal  @db.Decimal(10, 2)
-  discount     Decimal? @db.Decimal(10, 2)
-  createdAt    DateTime @default(now())
+  id            String   @id @default(uuid())
+  slNo          Int
+  billNo        String?
+  userId        String
+  licenseId     String
+  purchaseDate  DateTime @default(now())
+  entryTime     DateTime @default(now())
+  supplierName  String?
+  department    String?
+  debitAccount  String?
+  natureOfEntry String?
+  totalAmount   Decimal  @db.Decimal(10, 2)
+  discount      Decimal? @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
 
-  user    User           @relation(fields: [userId], references: [id])
-  license License        @relation(fields: [licenseId], references: [id])
-  items   PurchaseItem[]
+  user       User           @relation(fields: [userId], references: [id])
+  license    License        @relation(fields: [licenseId], references: [id])
+  supplierId String?
+  supplier   Supplier?      @relation(fields: [supplierId], references: [id])
+  items      PurchaseItem[]
 
   isSynced Boolean   @default(false)
   syncedAt DateTime?
 
+  @@unique([licenseId, slNo])
   @@index([licenseId, purchaseDate])
   @@index([isSynced])
 }
 
 model PurchaseItem {
-  id         String     @id @default(uuid())
-  purchaseId String
-  productId  String
-  quantity   Int
-  unit       Unit
-  rate       Decimal    @db.Decimal(10, 2)
-  taxPercent TaxPercent
-  taxAmount  Decimal    @db.Decimal(10, 2)
-  discount   Decimal?   @db.Decimal(10, 2)
-  salePrice  Decimal?   @db.Decimal(10, 2)
-  profit     Decimal?   @db.Decimal(10, 2)
-  totalCost  Decimal    @db.Decimal(10, 2)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime
+  id          String     @id @default(uuid())
+  purchaseId  String
+  productId   String
+  barcode     String?
+  quantity    Int
+  unit        Unit
+  rate        Decimal    @db.Decimal(10, 2)
+  mrp         Decimal?   @db.Decimal(10, 2)
+  taxPercent  TaxPercent
+  taxAmount   Decimal    @db.Decimal(10, 2)
+  discount    Decimal?   @db.Decimal(10, 2)
+  salePrice   Decimal?   @db.Decimal(10, 2)
+  profit      Decimal?   @db.Decimal(10, 2)
+  totalCost   Decimal    @db.Decimal(10, 2)
+  billedValue Decimal?   @db.Decimal(10, 2)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime
 
   purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product  Product  @relation(fields: [productId], references: [id])
@@ -188,5 +203,70 @@ model PurchaseItem {
   isSynced Boolean   @default(false)
   syncedAt DateTime?
 
+  @@index([isSynced])
+}
+
+model Supplier {
+  id         String  @id @default(uuid())
+  licenseId  String
+  code       String?
+  codeNumber Int?
+  name       String
+  phone      String?
+  email      String?
+  gstin      String?
+  category   String?
+  native     String?
+  language   String?
+  aadhaar    String?
+  pan        String?
+  license1   String?
+  license2   String?
+
+  settlementDays Int?
+  creditLimit    Decimal? @db.Decimal(12, 2)
+
+  department     String?
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  state          String?
+  pincode        String?
+  openingBalance Decimal   @default(0) @db.Decimal(12, 2)
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime
+  deletedAt      DateTime?
+  isSynced       Boolean   @default(false)
+  syncedAt       DateTime?
+
+  purchases Purchase[]
+  ledger    SupplierTransaction[]
+
+  @@unique([licenseId, name])
+  @@index([licenseId, name])
+  @@index([isSynced])
+}
+
+model SupplierTransaction {
+  id         String    @id @default(uuid())
+  licenseId  String
+  supplierId String
+  kind       String
+  refId      String?
+  refNo      String?
+  date       DateTime
+  amount     Decimal   @db.Decimal(12, 2)
+  sign       Int
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime
+  deletedAt  DateTime?
+  isSynced   Boolean   @default(false)
+  syncedAt   DateTime?
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([licenseId, supplierId, date])
   @@index([isSynced])
 }

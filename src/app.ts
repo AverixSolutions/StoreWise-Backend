@@ -6,6 +6,7 @@ import userRoutes from "./routes/user.routes";
 import authRoutes from "./routes/auth.routes";
 import franchiseRoutes from "./routes/franchise.routes";
 import syncProductRoutes from "./routes/sync.products.routes";
+import syncSupplierRoutes from "./routes/sync.suppliers.routes";
 
 const app = express();
 app.use(cors());
@@ -30,5 +31,8 @@ app.use("/api/auth", authRoutes);
 
 // Sync Product Routes
 app.use("/api/sync/product", syncProductRoutes);
+
+// Sync Supplier Routes
+app.use("/api/sync/suppliers", syncSupplierRoutes);
 
 export default app;

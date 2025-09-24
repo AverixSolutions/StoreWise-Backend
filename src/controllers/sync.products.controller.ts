@@ -8,6 +8,7 @@ const ProductPayload = z.object({
   licenseId: z.string().min(1),
   code: z.string(),
   codeNumber: z.number().int().nonnegative(),
+  barcode: z.string().nullable().optional(),
   name: z.string(),
   brand: z.string().nullable().optional(),
   category: z.string().nullable().optional(),
@@ -84,6 +85,7 @@ export async function pushProducts(req: any, res: Response) {
               licenseId: p.licenseId,
               code: p.code,
               codeNumber: p.codeNumber,
+              barcode: p.barcode ?? null,
               name: p.name,
               brand: p.brand ?? null,
               category: p.category ?? null,
@@ -115,6 +117,7 @@ export async function pushProducts(req: any, res: Response) {
           data: {
             code: p.code,
             codeNumber: p.codeNumber,
+            barcode: p.barcode ?? null,
             name: p.name,
             brand: p.brand ?? null,
             category: p.category ?? null,
