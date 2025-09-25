@@ -23,7 +23,6 @@ const ProductPayload = z.object({
   deletedAt: z.string().datetime().nullable().optional(),
 });
 
-/** ---------- HELPERS ---------- */
 const isoNow = () => new Date().toISOString();
 const ms = (x?: string | null) => (x ? new Date(x).getTime() : null);
 
@@ -75,17 +74,56 @@ export async function pushProducts(req: any, res: Response) {
       for (const p of body.items) {
         if (p.licenseId !== licenseId) continue;
 
-        const existing = await tx.product.findUnique({ where: { id: p.id } });
+        const current = await tx.product.findUnique({
+          where: { id: p.id },
+        });
 
-        if (!existing) {
-          // INSERT
-          await tx.product.create({
+        if (!current) {
+          const existingByCode = await tx.product.findFirst({
+            where: { licenseId: p.licenseId, code: p.code },
+          });
+
+          if (!existingByCode) {
+            await tx.product.create({
+              data: {
+                id: p.id,
+                licenseId: p.licenseId,
+                code: p.code,
+                codeNumber: p.codeNumber,
+                barcode: p.barcode ?? null,
+                name: p.name,
+                brand: p.brand ?? null,
+                category: p.category ?? null,
+                unit: p.unit,
+                tax: p.tax,
+                hsn: p.hsn ?? null,
+                costPrice: p.costPrice,
+                salePrice: p.salePrice ?? null,
+                stock: p.stock,
+                createdAt: p.createdAt,
+                updatedAt: p.updatedAt,
+                deletedAt: p.deletedAt ?? null,
+              },
+            });
+            continue;
+          }
+
+          const apply = shouldApplyLWW({
+            incomingUpdatedAt: p.updatedAt,
+            currentUpdatedAt: existingByCode.updatedAt,
+            incomingDeletedAt: p.deletedAt ?? null,
+            currentDeletedAt: (existingByCode as any).deletedAt ?? null,
+          });
+
+          if (!apply) {
+            continue;
+          }
+
+          await tx.product.update({
+            where: { id: existingByCode.id },
             data: {
-              id: p.id,
-              licenseId: p.licenseId,
-              code: p.code,
-              codeNumber: p.codeNumber,
               barcode: p.barcode ?? null,
+              codeNumber: p.codeNumber,
               name: p.name,
               brand: p.brand ?? null,
               category: p.category ?? null,
@@ -95,7 +133,6 @@ export async function pushProducts(req: any, res: Response) {
               costPrice: p.costPrice,
               salePrice: p.salePrice ?? null,
               stock: p.stock,
-              createdAt: p.createdAt,
               updatedAt: p.updatedAt,
               deletedAt: p.deletedAt ?? null,
             },
@@ -105,9 +142,9 @@ export async function pushProducts(req: any, res: Response) {
 
         const apply = shouldApplyLWW({
           incomingUpdatedAt: p.updatedAt,
-          currentUpdatedAt: existing.updatedAt,
+          currentUpdatedAt: current.updatedAt,
           incomingDeletedAt: p.deletedAt ?? null,
-          currentDeletedAt: (existing as any).deletedAt ?? null,
+          currentDeletedAt: (current as any).deletedAt ?? null,
         });
 
         if (!apply) continue;

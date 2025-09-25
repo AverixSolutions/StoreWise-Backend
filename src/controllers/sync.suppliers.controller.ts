@@ -26,8 +26,8 @@ const SupplierPayload = z.object({
   license1: z.string().nullable().optional(),
   license2: z.string().nullable().optional(),
   settlementDays: z.number().int().nullable().optional(),
-  creditLimit: z.string().nullable().optional(), // string like products
-  openingBalance: z.string(), // string
+  creditLimit: z.string().nullable().optional(),
+  openingBalance: z.string(),
   notes: z.string().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -56,13 +56,56 @@ function shouldApplyLWW(opts: {
 export async function bootstrapSuppliers(req: any, res: Response) {
   try {
     const licenseId = req.user.licenseId as string;
+    const { limit, cursor, updatedSince } = req.query;
 
-    const suppliers = await prisma.supplier.findMany({
-      where: { licenseId, deletedAt: null },
-      orderBy: [{ name: "asc" }],
-    });
+    const take = Math.min(parseInt(String(limit ?? 200), 10) || 200, 1000);
 
-    return res.json({ serverTime: isoNow(), suppliers });
+    if (updatedSince) {
+      const since = new Date(String(updatedSince));
+
+      let pageFilter: any = {};
+      if (cursor) {
+        const [uIso, lastId] = String(cursor).split("::");
+        const u = new Date(uIso);
+        pageFilter = {
+          OR: [
+            { updatedAt: { gt: u } },
+            { AND: [{ updatedAt: u }, { id: { gt: lastId } }] },
+          ],
+        };
+      }
+
+      const suppliers = await prisma.supplier.findMany({
+        where: {
+          licenseId,
+          updatedAt: { gte: since },
+          ...pageFilter,
+        },
+        orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+        take,
+      });
+
+      const nextCursor = suppliers.length
+        ? `${suppliers[suppliers.length - 1].updatedAt.toISOString()}::${
+            suppliers[suppliers.length - 1].id
+          }`
+        : undefined;
+
+      return res.json({ serverTime: isoNow(), suppliers, nextCursor });
+    } else {
+      const suppliers = await prisma.supplier.findMany({
+        where: { licenseId, deletedAt: null },
+        orderBy: { id: "asc" },
+        ...(cursor ? { cursor: { id: String(cursor) }, skip: 1 } : {}),
+        take,
+      });
+
+      const nextCursor = suppliers.length
+        ? suppliers[suppliers.length - 1].id
+        : undefined;
+
+      return res.json({ serverTime: isoNow(), suppliers, nextCursor });
+    }
   } catch (e) {
     console.error("bootstrapSuppliers error", e);
     return res.status(500).json({ error: "Bootstrap suppliers failed" });
@@ -76,90 +119,136 @@ export async function pushSuppliers(req: any, res: Response) {
       .object({ items: z.array(SupplierPayload).max(2000) })
       .parse(req.body);
 
+    console.log("Received suppliers:", body.items);
+
+    const results: Array<{
+      id: string;
+      status: "created" | "updated" | "skipped" | "conflict";
+    }> = [];
+    const failed: Array<{ id: string; error: string }> = [];
+
     await prisma.$transaction(async (tx) => {
       for (const s of body.items) {
-        if (s.licenseId !== licenseId) continue;
+        try {
+          if (s.licenseId !== licenseId) {
+            results.push({ id: s.id, status: "skipped" });
+            continue;
+          }
 
-        const existing = await tx.supplier.findUnique({ where: { id: s.id } });
+          console.log("Processing supplier:", s.id);
 
-        if (!existing) {
-          await tx.supplier.create({
+          let target = await tx.supplier.findUnique({
+            where: { id: s.id },
+          });
+
+          if (!target) {
+            const byCode = s.code
+              ? await tx.supplier.findFirst({
+                  where: { licenseId: s.licenseId, code: s.code },
+                })
+              : null;
+            const byCodeNumber =
+              s.codeNumber != null
+                ? await tx.supplier.findFirst({
+                    where: { licenseId: s.licenseId, codeNumber: s.codeNumber },
+                  })
+                : null;
+            target = byCode ?? byCodeNumber;
+          }
+
+          if (!target) {
+            await tx.supplier.create({
+              data: {
+                id: s.id,
+                licenseId: s.licenseId,
+                code: s.code ?? null,
+                codeNumber: s.codeNumber ?? null,
+                name: s.name,
+                phone: s.phone ?? null,
+                email: s.email ?? null,
+                gstin: s.gstin ?? null,
+                department: s.department ?? null,
+                addressLine1: s.addressLine1 ?? null,
+                addressLine2: s.addressLine2 ?? null,
+                city: s.city ?? null,
+                state: s.state ?? null,
+                pincode: s.pincode ?? null,
+                category: s.category ?? null,
+                native: s.native ?? null,
+                language: s.language ?? null,
+                aadhaar: s.aadhaar ?? null,
+                pan: s.pan ?? null,
+                license1: s.license1 ?? null,
+                license2: s.license2 ?? null,
+                settlementDays: s.settlementDays ?? null,
+                creditLimit: s.creditLimit ?? null,
+                openingBalance: s.openingBalance,
+                notes: s.notes ?? null,
+                createdAt: s.createdAt,
+                updatedAt: s.updatedAt,
+                deletedAt: s.deletedAt ?? null,
+              },
+            });
+            results.push({ id: s.id, status: "created" });
+            continue;
+          }
+
+          const apply = shouldApplyLWW({
+            incomingUpdatedAt: s.updatedAt,
+            currentUpdatedAt: target.updatedAt,
+            incomingDeletedAt: s.deletedAt ?? null,
+            currentDeletedAt: (target as any).deletedAt ?? null,
+          });
+
+          if (!apply) {
+            results.push({ id: s.id, status: "skipped" });
+            continue;
+          }
+
+          await tx.supplier.update({
+            where: { id: target.id },
             data: {
-              id: s.id,
-              licenseId: s.licenseId,
-              code: s.code,
+              code: s.code ?? null,
               codeNumber: s.codeNumber ?? null,
               name: s.name,
-              phone: s.phone,
-              email: s.email,
-              gstin: s.gstin,
-              department: s.department,
-              addressLine1: s.addressLine1,
-              addressLine2: s.addressLine2,
-              city: s.city,
-              state: s.state,
-              pincode: s.pincode,
-              category: s.category,
-              native: s.native,
-              language: s.language,
-              aadhaar: s.aadhaar,
-              pan: s.pan,
-              license1: s.license1,
-              license2: s.license2,
-              settlementDays: s.settlementDays,
-              creditLimit: s.creditLimit,
+              phone: s.phone ?? null,
+              email: s.email ?? null,
+              gstin: s.gstin ?? null,
+              department: s.department ?? null,
+              addressLine1: s.addressLine1 ?? null,
+              addressLine2: s.addressLine2 ?? null,
+              city: s.city ?? null,
+              state: s.state ?? null,
+              pincode: s.pincode ?? null,
+              category: s.category ?? null,
+              native: s.native ?? null,
+              language: s.language ?? null,
+              aadhaar: s.aadhaar ?? null,
+              pan: s.pan ?? null,
+              license1: s.license1 ?? null,
+              license2: s.license2 ?? null,
+              settlementDays: s.settlementDays ?? null,
+              creditLimit: s.creditLimit ?? null,
               openingBalance: s.openingBalance,
-              notes: s.notes,
-              createdAt: s.createdAt,
+              notes: s.notes ?? null,
               updatedAt: s.updatedAt,
               deletedAt: s.deletedAt ?? null,
             },
           });
-          continue;
+          results.push({ id: s.id, status: "updated" });
+        } catch (err: any) {
+          const code = err?.code || "";
+          if (code === "P2002") {
+            results.push({ id: s.id, status: "conflict" });
+          } else {
+            failed.push({ id: s.id, error: code || err?.message || "ERR" });
+          }
         }
-
-        const apply = shouldApplyLWW({
-          incomingUpdatedAt: s.updatedAt,
-          currentUpdatedAt: existing.updatedAt,
-          incomingDeletedAt: s.deletedAt ?? null,
-          currentDeletedAt: (existing as any).deletedAt ?? null,
-        });
-        if (!apply) continue;
-
-        await tx.supplier.update({
-          where: { id: s.id },
-          data: {
-            code: s.code,
-            codeNumber: s.codeNumber ?? null,
-            name: s.name,
-            phone: s.phone,
-            email: s.email,
-            gstin: s.gstin,
-            department: s.department,
-            addressLine1: s.addressLine1,
-            addressLine2: s.addressLine2,
-            city: s.city,
-            state: s.state,
-            pincode: s.pincode,
-            category: s.category,
-            native: s.native,
-            language: s.language,
-            aadhaar: s.aadhaar,
-            pan: s.pan,
-            license1: s.license1,
-            license2: s.license2,
-            settlementDays: s.settlementDays,
-            creditLimit: s.creditLimit,
-            openingBalance: s.openingBalance,
-            notes: s.notes,
-            updatedAt: s.updatedAt,
-            deletedAt: s.deletedAt ?? null,
-          },
-        });
       }
     });
 
-    return res.json({ serverSyncedAt: isoNow() });
+    console.log("Push result:", { results, failed });
+    return res.json({ serverSyncedAt: isoNow(), results, failed });
   } catch (e: any) {
     console.error("pushSuppliers error", e);
     return res.status(500).json({ error: "Push suppliers failed" });

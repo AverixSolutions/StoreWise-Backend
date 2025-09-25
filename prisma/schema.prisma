@@ -140,7 +140,7 @@ model Product {
   isSynced Boolean   @default(false)
   syncedAt DateTime?
 
-  @@unique([licenseId, code])
+  @@unique([licenseId, code], name: "license_code_unique")
   @@unique([licenseId, codeNumber])
   @@unique([licenseId, barcode])
   @@index([licenseId, code])
@@ -243,7 +243,8 @@ model Supplier {
   purchases Purchase[]
   ledger    SupplierTransaction[]
 
-  @@unique([licenseId, name])
+  @@unique([licenseId, code])
+  @@unique([licenseId, codeNumber])
   @@index([licenseId, name])
   @@index([isSynced])
 }
