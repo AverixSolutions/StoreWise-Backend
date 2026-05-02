@@ -32,12 +32,15 @@ export const login = async (req: Request, res: Response) => {
     if (!validPassword)
       return res.status(400).json({ error: "Invalid credentials" });
 
+    // Payload updated with tier
     const payload = {
       id: user.id,
       role: user.role,
       licenseId: user.licenseId,
       licenseName: user.license?.name,
+      tier: user.license?.tier,
     };
+
     const token = jwt.sign(payload, env.JWT_SECRET, { expiresIn: "90d" });
 
     const ip =
@@ -73,6 +76,7 @@ export const login = async (req: Request, res: Response) => {
         role: user.role,
         licenseId: user.licenseId,
         licenseName: user.license?.name,
+        tier: user.license?.tier, // Added tier to response
       },
     });
   } catch (err) {

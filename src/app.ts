@@ -5,34 +5,23 @@ import licenseRoutes from "./routes/license.routes";
 import userRoutes from "./routes/user.routes";
 import authRoutes from "./routes/auth.routes";
 import franchiseRoutes from "./routes/franchise.routes";
-import syncProductRoutes from "./routes/sync.products.routes";
-import syncSupplierRoutes from "./routes/sync.suppliers.routes";
+import syncRoutes from "./routes/sync.routes";
+import uploadRoutes from "./routes/upload.routes";
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Base User Route
 app.get("/", (req, res) => {
   res.json({ message: "Welcome to StoreWise Backend 🚀" });
 });
 
-// Franchise Route
 app.use("/api/franchises", franchiseRoutes);
-
-// License Route
 app.use("/api/license", licenseRoutes);
-
-// Add User Route
 app.use("/api/users", userRoutes);
-
-// Auth Routes
 app.use("/api/auth", authRoutes);
-
-// Sync Product Routes
-app.use("/api/sync/product", syncProductRoutes);
-
-// Sync Supplier Routes
-app.use("/api/sync/suppliers", syncSupplierRoutes);
+app.use("/api/sync", syncRoutes);
+app.use("/api/upload", uploadRoutes);
 
 export default app;

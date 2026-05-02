@@ -53,7 +53,7 @@ export const createLicense = async (req: Request, res: Response) => {
       roleLimits?.length > 0 ? roleLimits : defaultRoleLimits;
 
     const licenseId = `AVX-SW-${new Date().getFullYear()}-${nanoid(
-      6
+      6,
     ).toUpperCase()}`;
 
     let marginForUs = amountPaid;
@@ -77,6 +77,7 @@ export const createLicense = async (req: Request, res: Response) => {
         franchiseId: saleType === "FRANCHISE" ? franchiseId : null,
         marginForUs,
         marginForFranchise,
+        tier: req.body.tier ?? "PRO",
         roleLimits: {
           create: finalRoleLimits.map((rl: any) => ({
             role: rl.role,

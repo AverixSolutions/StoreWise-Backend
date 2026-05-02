@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,72 +7,47 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  ADMIN
-  SUPERVISOR
-  USER
-}
-
-enum SaleType {
-  DIRECT
-  FRANCHISE
-}
-
-enum Unit {
-  KG
-  NOS
-  LTR
-  MTR
-}
-
-enum TaxPercent {
-  NT
-  P5
-  P12
-  P18
-  P28
-}
-
 model User {
-  id        String   @id @default(uuid())
-  userId    String   @unique
+  id        String     @id @default(uuid())
+  userId    String     @unique
   password  String
-  role      Role     @default(USER)
-  isActive  Boolean  @default(true)
+  role      Role       @default(USER)
+  isActive  Boolean    @default(true)
   licenseId String?
-  license   License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  sessions Session[]
-  Purchase Purchase[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  purchases Purchase[]
+  sales     Sale[]
+  sessions  Session[]
+  license   License?   @relation(fields: [licenseId], references: [id])
 }
 
 model License {
-  id          String   @id
-  name        String
-  maxUsers    Int      @default(1)
-  activeUntil DateTime
-  isActive    Boolean  @default(true)
-
-  saleType           SaleType @default(DIRECT)
+  id                 String             @id
+  name               String
+  maxUsers           Int                @default(1)
+  activeUntil        DateTime
+  isActive           Boolean            @default(true)
+  saleType           SaleType           @default(DIRECT)
   customerName       String
   customerPhone      String
-  amountPaid         Decimal  @db.Decimal(10, 2)
+  amountPaid         Decimal            @db.Decimal(10, 2)
   franchiseId        String?
-  marginForUs        Decimal  @db.Decimal(10, 2)
-  marginForFranchise Decimal  @db.Decimal(10, 2)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  users      User[]
-  roleLimits LicenseRoleLimit[]
-
-  franchise Franchise? @relation(fields: [franchiseId], references: [id])
-
-  products  Product[]
-  purchases Purchase[]
+  marginForUs        Decimal            @db.Decimal(10, 2)
+  marginForFranchise Decimal            @db.Decimal(10, 2)
+  tier               LicenseTier        @default(PRO)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  customers          Customer[]
+  franchise          Franchise?         @relation(fields: [franchiseId], references: [id])
+  roleLimits         LicenseRoleLimit[]
+  products           Product[]
+  purchases          Purchase[]
+  purchaseReturns    PurchaseReturn[]
+  sales              Sale[]
+  saleReturns        SaleReturn[]
+  suppliers          Supplier[]
+  users              User[]
 }
 
 model Franchise {
@@ -94,8 +68,7 @@ model LicenseRoleLimit {
   maxScreens Int      @default(1)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-
-  license License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  license    License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
 
   @@unique([licenseId, role])
 }
@@ -103,145 +76,468 @@ model LicenseRoleLimit {
 model Session {
   id         String   @id @default(uuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
-  expiresAt  DateTime @default(dbgenerated("now() + interval '1 year'"))
+  expiresAt  DateTime @default(dbgenerated("(now() + '1 year'::interval)"))
   revoked    Boolean  @default(false)
   deviceInfo String?
   ip         String?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, deviceInfo])
   @@index([userId])
 }
 
 model Product {
-  id         String     @id @default(uuid())
-  licenseId  String
-  code       String
-  codeNumber Int
-  barcode    String?
-  name       String
-  brand      String?
-  category   String?
-  unit       Unit
-  tax        TaxPercent
-  hsn        String?
-  costPrice  Decimal    @db.Decimal(10, 2)
-  salePrice  Decimal?   @db.Decimal(10, 2)
-  stock      Int        @default(0)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime
+  id            String         @id @default(uuid())
+  licenseId     String
+  code          String
+  codeNumber    Int
+  name          String
+  brand         String?
+  category      String?
+  subcategory   String?
+  productName   String?
+  model         String?
+  size          String?
+  shortCode     String?
+  unit          String
+  tax           TaxPercent
+  hsn           String?
+  costPrice     Decimal        @db.Decimal(10, 2)
+  salePrice     Decimal?       @db.Decimal(10, 2)
+  stock         Int            @default(0)
+  imagePath     String?
+  imageFileName String?
+  createdAt     DateTime?
+  updatedAt     DateTime
+  deletedAt     DateTime?
+  isSynced      Boolean        @default(false)
+  syncedAt      DateTime?
+  license       License        @relation(fields: [licenseId], references: [id])
+  batches       ProductBatch[]
+  purchaseItems PurchaseItem[]
+  saleItems     SaleItem[]
 
-  deletedAt DateTime?
-
-  license   License        @relation(fields: [licenseId], references: [id])
-  purchases PurchaseItem[]
-
-  isSynced Boolean   @default(false)
-  syncedAt DateTime?
-
-  @@unique([licenseId, code], name: "license_code_unique")
+  @@unique([licenseId, code])
   @@unique([licenseId, codeNumber])
-  @@unique([licenseId, barcode])
   @@index([licenseId, code])
   @@index([licenseId, name])
   @@index([isSynced])
 }
 
+model ProductBatch {
+  id                       String    @id @default(uuid())
+  licenseId                String
+  productId                String
+  barcode                  String?
+  mrp                      Decimal?  @db.Decimal(10, 2)
+  salePrice                Decimal?  @db.Decimal(10, 2)
+  costPrice                Decimal?  @db.Decimal(10, 2)
+  batchNo                  String?
+  purchaseBatchNo          String?
+  purchaseId               String?
+  mfgDate                  String?
+  expiryDate               String?
+  receivedAt               DateTime?
+  stock                    Int       @default(0)
+  isSystemGeneratedBarcode Boolean   @default(false)
+  createdAt                DateTime?
+  updatedAt                DateTime?
+  deletedAt                DateTime?
+  product                  Product   @relation(fields: [productId], references: [id])
+
+  @@index([productId, deletedAt])
+  @@index([licenseId, barcode])
+  @@index([productId, batchNo, expiryDate, mfgDate, mrp, salePrice])
+  @@index([licenseId, purchaseBatchNo, productId, deletedAt])
+  @@index([purchaseId, productId, deletedAt])
+}
+
+model Category {
+  id        String     @id @default(uuid())
+  licenseId String
+  name      String
+  parentId  String?
+  createdAt DateTime?
+  updatedAt DateTime?
+  deletedAt DateTime?
+  parent    Category?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryParent")
+
+  @@index([licenseId, deletedAt])
+}
+
+model Brand {
+  id        String    @id @default(uuid())
+  licenseId String
+  name      String
+  createdAt DateTime?
+  updatedAt DateTime?
+  deletedAt DateTime?
+
+  @@index([licenseId, deletedAt])
+}
+
 model Purchase {
-  id            String   @id @default(uuid())
-  slNo          Int
-  billNo        String?
-  userId        String
-  licenseId     String
-  purchaseDate  DateTime @default(now())
-  entryTime     DateTime @default(now())
-  supplierName  String?
-  department    String?
-  debitAccount  String?
-  natureOfEntry String?
-  totalAmount   Decimal  @db.Decimal(10, 2)
-  discount      Decimal? @db.Decimal(10, 2)
-  createdAt     DateTime @default(now())
-
-  user       User           @relation(fields: [userId], references: [id])
-  license    License        @relation(fields: [licenseId], references: [id])
-  supplierId String?
-  supplier   Supplier?      @relation(fields: [supplierId], references: [id])
-  items      PurchaseItem[]
-
-  isSynced Boolean   @default(false)
-  syncedAt DateTime?
+  id              String         @id @default(uuid())
+  slNo            Int?
+  billNo          String?
+  userId          String?
+  licenseId       String
+  supplierId      String?
+  supplierName    String?
+  department      String?
+  debitAccount    String?
+  natureOfEntry   String?
+  purchaseType    String?
+  purchaseBatchNo String?
+  purchaseDate    DateTime       @default(now())
+  entryTime       DateTime?
+  totalAmount     Decimal        @db.Decimal(10, 2)
+  discount        Decimal?       @db.Decimal(10, 2)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime?
+  deletedAt       DateTime?
+  isSynced        Boolean        @default(false)
+  syncedAt        DateTime?
+  license         License        @relation(fields: [licenseId], references: [id])
+  supplier        Supplier?      @relation(fields: [supplierId], references: [id])
+  user            User?          @relation(fields: [userId], references: [id])
+  items           PurchaseItem[]
 
   @@unique([licenseId, slNo])
   @@index([licenseId, purchaseDate])
+  @@index([licenseId, supplierId])
   @@index([isSynced])
 }
 
 model PurchaseItem {
-  id          String     @id @default(uuid())
-  purchaseId  String
-  productId   String
-  barcode     String?
-  quantity    Int
-  unit        Unit
-  rate        Decimal    @db.Decimal(10, 2)
-  mrp         Decimal?   @db.Decimal(10, 2)
-  taxPercent  TaxPercent
-  taxAmount   Decimal    @db.Decimal(10, 2)
-  discount    Decimal?   @db.Decimal(10, 2)
-  salePrice   Decimal?   @db.Decimal(10, 2)
-  profit      Decimal?   @db.Decimal(10, 2)
-  totalCost   Decimal    @db.Decimal(10, 2)
-  billedValue Decimal?   @db.Decimal(10, 2)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime
+  id                 String     @id @default(uuid())
+  purchaseId         String
+  productId          String
+  barcode            String?
+  quantity           Int
+  unit               String
+  rate               Decimal    @db.Decimal(10, 2)
+  mrp                Decimal?   @db.Decimal(10, 2)
+  taxPercent         TaxPercent
+  taxAmount          Decimal    @db.Decimal(10, 2)
+  discount           Decimal?   @db.Decimal(10, 2)
+  discountType       String?
+  salePrice          Decimal?   @db.Decimal(10, 2)
+  profit             Decimal?   @db.Decimal(10, 2)
+  totalCost          Decimal    @db.Decimal(10, 2)
+  billedValue        Decimal?   @db.Decimal(10, 2)
+  batchNo            String?
+  batchId            String?
+  purchaseBatchNo    String?
+  mfgDate            String?
+  expiryDate         String?
+  lineNo             Int?
+  isFree             Boolean    @default(false)
+  effectiveUnitValue Decimal?   @db.Decimal(10, 2)
+  createdAt          DateTime?
+  updatedAt          DateTime?
+  deletedAt          DateTime?
+  isSynced           Boolean    @default(false)
+  syncedAt           DateTime?
+  product            Product    @relation(fields: [productId], references: [id])
+  purchase           Purchase   @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
 
-  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id])
-
-  isSynced Boolean   @default(false)
-  syncedAt DateTime?
-
+  @@index([purchaseId, lineNo])
+  @@index([batchId])
   @@index([isSynced])
 }
 
-model Supplier {
-  id         String  @id @default(uuid())
+model PurchaseReturn {
+  id            String               @id @default(uuid())
+  slNo          Int?
+  userId        String?
+  licenseId     String
+  supplierId    String?
+  supplierName  String?
+  billNo        String?
+  department    String?
+  debitAccount  String?
+  natureOfEntry String?
+  purchaseType  String?
+  returnDate    DateTime             @default(now())
+  entryTime     DateTime?
+  totalAmount   Decimal              @db.Decimal(10, 2)
+  discount      Decimal?             @db.Decimal(10, 2)
+  createdAt     DateTime?
+  updatedAt     DateTime?
+  deletedAt     DateTime?
+  isSynced      Boolean              @default(false)
+  syncedAt      DateTime?
+  license       License              @relation(fields: [licenseId], references: [id])
+  items         PurchaseReturnItem[]
+
+  @@unique([licenseId, slNo])
+  @@index([licenseId, returnDate])
+  @@index([licenseId, supplierId])
+}
+
+model PurchaseReturnItem {
+  id                 String         @id @default(uuid())
+  returnId           String
+  productId          String
+  barcode            String?
+  quantity           Int
+  unit               String
+  rate               Decimal        @db.Decimal(10, 2)
+  mrp                Decimal?       @db.Decimal(10, 2)
+  taxPercent         TaxPercent
+  taxAmount          Decimal        @db.Decimal(10, 2)
+  discount           Decimal?       @db.Decimal(10, 2)
+  discountType       String?
+  salePrice          Decimal?       @db.Decimal(10, 2)
+  profit             Decimal?       @db.Decimal(10, 2)
+  totalCost          Decimal        @db.Decimal(10, 2)
+  billedValue        Decimal?       @db.Decimal(10, 2)
+  batchNo            String?
+  batchId            String?
+  mfgDate            String?
+  expiryDate         String?
+  lineNo             Int?
+  effectiveUnitValue Decimal?       @db.Decimal(10, 2)
+  appliedQuantity    Int?
+  overReturnQuantity Int?
+  overReturnReason   String?
+  createdAt          DateTime?
+  updatedAt          DateTime?
+  deletedAt          DateTime?
+  isSynced           Boolean        @default(false)
+  syncedAt           DateTime?
+  purchaseReturn     PurchaseReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  @@index([returnId, lineNo])
+  @@index([batchId])
+}
+
+model PurchaseHold {
+  id         String    @id @default(uuid())
   licenseId  String
-  code       String?
-  codeNumber Int?
-  name       String
-  phone      String?
-  email      String?
-  gstin      String?
-  category   String?
-  native     String?
-  language   String?
-  aadhaar    String?
-  pan        String?
-  license1   String?
-  license2   String?
+  userId     String?
+  holdNo     Int
+  title      String?
+  headerJson String
+  rowsJson   String
+  createdAt  DateTime?
+  updatedAt  DateTime?
+  deletedAt  DateTime?
+  isSynced   Boolean   @default(false)
+  syncedAt   DateTime?
 
+  @@unique([licenseId, holdNo])
+  @@index([licenseId, createdAt])
+}
+
+model PurchaseReturnHold {
+  id         String    @id @default(uuid())
+  licenseId  String
+  userId     String?
+  holdNo     Int
+  title      String?
+  headerJson String
+  rowsJson   String
+  createdAt  DateTime?
+  updatedAt  DateTime?
+  deletedAt  DateTime?
+  isSynced   Boolean   @default(false)
+  syncedAt   DateTime?
+
+  @@unique([licenseId, holdNo])
+  @@index([licenseId, createdAt])
+}
+
+model Sale {
+  id            String     @id @default(uuid())
+  slNo          Int?
+  userId        String?
+  licenseId     String
+  customerId    String?
+  customerName  String?
+  billNo        String?
+  department    String?
+  debitAccount  String?
+  natureOfEntry String?
+  saleDate      DateTime   @default(now())
+  entryTime     DateTime?
+  totalAmount   Decimal    @db.Decimal(10, 2)
+  discount      Decimal?   @db.Decimal(10, 2)
+  saleType      String?
+  createdAt     DateTime?
+  updatedAt     DateTime?
+  deletedAt     DateTime?
+  isSynced      Boolean    @default(false)
+  syncedAt      DateTime?
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  license       License    @relation(fields: [licenseId], references: [id])
+  user          User?      @relation(fields: [userId], references: [id])
+  items         SaleItem[]
+
+  @@unique([licenseId, slNo])
+  @@index([licenseId, saleDate])
+  @@index([licenseId, customerId])
+  @@index([isSynced])
+}
+
+model SaleItem {
+  id                 String     @id @default(uuid())
+  saleId             String
+  productId          String
+  barcode            String?
+  quantity           Int
+  unit               String
+  rate               Decimal    @db.Decimal(10, 2)
+  mrp                Decimal?   @db.Decimal(10, 2)
+  taxPercent         TaxPercent
+  taxAmount          Decimal    @db.Decimal(10, 2)
+  discount           Decimal?   @db.Decimal(10, 2)
+  discountType       String?
+  salePrice          Decimal?   @db.Decimal(10, 2)
+  profit             Decimal?   @db.Decimal(10, 2)
+  totalCost          Decimal    @db.Decimal(10, 2)
+  billedValue        Decimal?   @db.Decimal(10, 2)
+  batchNo            String?
+  batchId            String?
+  mfgDate            String?
+  expiryDate         String?
+  lineNo             Int?
+  effectiveUnitValue Decimal?   @db.Decimal(10, 2)
+  isFree             Boolean    @default(false)
+  createdAt          DateTime?
+  updatedAt          DateTime?
+  deletedAt          DateTime?
+  isSynced           Boolean    @default(false)
+  syncedAt           DateTime?
+  product            Product    @relation(fields: [productId], references: [id])
+  sale               Sale       @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId, lineNo])
+  @@index([batchId])
+  @@index([isSynced])
+}
+
+model SaleReturn {
+  id            String           @id @default(uuid())
+  slNo          Int?
+  userId        String?
+  licenseId     String
+  customerId    String?
+  customerName  String?
+  billNo        String?
+  department    String?
+  debitAccount  String?
+  natureOfEntry String?
+  returnDate    DateTime         @default(now())
+  entryTime     DateTime?
+  totalAmount   Decimal          @db.Decimal(10, 2)
+  discount      Decimal?         @db.Decimal(10, 2)
+  saleType      String?
+  createdAt     DateTime?
+  updatedAt     DateTime?
+  deletedAt     DateTime?
+  isSynced      Boolean          @default(false)
+  syncedAt      DateTime?
+  license       License          @relation(fields: [licenseId], references: [id])
+  items         SaleReturnItem[]
+
+  @@unique([licenseId, slNo])
+  @@index([licenseId, returnDate])
+}
+
+model SaleReturnItem {
+  id                 String     @id @default(uuid())
+  returnId           String
+  productId          String
+  barcode            String?
+  quantity           Int
+  unit               String
+  rate               Decimal    @db.Decimal(10, 2)
+  mrp                Decimal?   @db.Decimal(10, 2)
+  taxPercent         TaxPercent
+  taxAmount          Decimal    @db.Decimal(10, 2)
+  discount           Decimal?   @db.Decimal(10, 2)
+  discountType       String?
+  salePrice          Decimal?   @db.Decimal(10, 2)
+  profit             Decimal?   @db.Decimal(10, 2)
+  totalCost          Decimal    @db.Decimal(10, 2)
+  billedValue        Decimal?   @db.Decimal(10, 2)
+  batchNo            String?
+  batchId            String?
+  mfgDate            String?
+  expiryDate         String?
+  lineNo             Int?
+  effectiveUnitValue Decimal?   @db.Decimal(10, 2)
+  appliedQuantity    Int?
+  overReturnQuantity Int?
+  overReturnReason   String?
+  createdAt          DateTime?
+  updatedAt          DateTime?
+  deletedAt          DateTime?
+  isSynced           Boolean    @default(false)
+  syncedAt           DateTime?
+  saleReturn         SaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  @@index([returnId, lineNo])
+  @@index([batchId])
+}
+
+model SaleHold {
+  id         String    @id @default(uuid())
+  licenseId  String
+  userId     String?
+  holdNo     Int
+  title      String?
+  headerJson String
+  rowsJson   String
+  createdAt  DateTime?
+  updatedAt  DateTime?
+  deletedAt  DateTime?
+  isSynced   Boolean   @default(false)
+  syncedAt   DateTime?
+
+  @@unique([licenseId, holdNo])
+  @@index([licenseId, createdAt])
+}
+
+model Supplier {
+  id             String                   @id @default(uuid())
+  licenseId      String
+  code           String?
+  codeNumber     Int?
+  name           String
+  phone          String?
+  email          String?
+  gstin          String?
+  category       String?
+  native         String?
+  language       String?
+  aadhaar        String?
+  pan            String?
+  license1       String?
+  license2       String?
   settlementDays Int?
-  creditLimit    Decimal? @db.Decimal(12, 2)
-
+  creditLimit    Decimal?                 @db.Decimal(12, 2)
   department     String?
   addressLine1   String?
   addressLine2   String?
   city           String?
   state          String?
   pincode        String?
-  openingBalance Decimal   @default(0) @db.Decimal(12, 2)
+  openingBalance Decimal                  @default(0) @db.Decimal(12, 2)
   notes          String?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime?
   updatedAt      DateTime
   deletedAt      DateTime?
-  isSynced       Boolean   @default(false)
+  isSynced       Boolean                  @default(false)
   syncedAt       DateTime?
-
-  purchases Purchase[]
-  ledger    SupplierTransaction[]
+  purchases      Purchase[]
+  license        License                  @relation(fields: [licenseId], references: [id])
+  settlements    SupplierBillSettlement[]
+  ledger         SupplierTransaction[]
 
   @@unique([licenseId, code])
   @@unique([licenseId, codeNumber])
@@ -250,24 +546,455 @@ model Supplier {
 }
 
 model SupplierTransaction {
-  id         String    @id @default(uuid())
+  id          String                   @id @default(uuid())
+  licenseId   String
+  supplierId  String
+  kind        SupplierTxKind
+  refId       String?
+  refNo       String?
+  date        DateTime
+  amount      Decimal                  @db.Decimal(12, 2)
+  sign        Int
+  notes       String?
+  createdAt   DateTime?
+  updatedAt   DateTime
+  deletedAt   DateTime?
+  isSynced    Boolean                  @default(false)
+  syncedAt    DateTime?
+  settlements SupplierBillSettlement[]
+  supplier    Supplier                 @relation(fields: [supplierId], references: [id])
+
+  @@index([licenseId, supplierId, date])
+  @@index([licenseId, kind, refId])
+  @@index([isSynced])
+}
+
+model SupplierBillSettlement {
+  id          String              @id @default(uuid())
+  licenseId   String
+  supplierId  String
+  paymentTxId String
+  purchaseId  String
+  amount      Decimal             @db.Decimal(12, 2)
+  createdAt   DateTime?
+  paymentTx   SupplierTransaction @relation(fields: [paymentTxId], references: [id], onDelete: Cascade)
+  supplier    Supplier            @relation(fields: [supplierId], references: [id])
+
+  @@index([licenseId, supplierId])
+  @@index([licenseId, purchaseId])
+}
+
+model Customer {
+  id             String                @id @default(uuid())
+  licenseId      String
+  code           String?
+  codeNumber     Int?
+  name           String
+  phone          String?
+  email          String?
+  gstin          String?
+  category       String?
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  state          String?
+  pincode        String?
+  openingBalance Decimal               @default(0) @db.Decimal(12, 2)
+  notes          String?
+  createdAt      DateTime?
+  updatedAt      DateTime?
+  deletedAt      DateTime?
+  isSynced       Boolean               @default(false)
+  syncedAt       DateTime?
+  license        License               @relation(fields: [licenseId], references: [id])
+  transactions   CustomerTransaction[]
+  sales          Sale[]
+
+  @@unique([licenseId, code])
+  @@unique([licenseId, codeNumber])
+  @@index([licenseId, name])
+  @@index([isSynced])
+}
+
+model CustomerTransaction {
+  id         String         @id @default(uuid())
   licenseId  String
-  supplierId String
-  kind       String
+  customerId String
+  kind       CustomerTxKind
   refId      String?
   refNo      String?
   date       DateTime
-  amount     Decimal   @db.Decimal(12, 2)
+  amount     Decimal        @db.Decimal(12, 2)
   sign       Int
   notes      String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
   deletedAt  DateTime?
-  isSynced   Boolean   @default(false)
+  isSynced   Boolean        @default(false)
   syncedAt   DateTime?
+  customer   Customer       @relation(fields: [customerId], references: [id])
 
-  supplier Supplier @relation(fields: [supplierId], references: [id])
-
-  @@index([licenseId, supplierId, date])
+  @@index([licenseId, customerId, date])
   @@index([isSynced])
+}
+
+model CashTransaction {
+  id        String     @id @default(uuid())
+  licenseId String
+  kind      CashTxKind
+  refId     String?
+  refNo     String?
+  date      DateTime
+  amount    Decimal    @db.Decimal(12, 2)
+  sign      Int
+  notes     String?
+  createdAt DateTime?
+  updatedAt DateTime?
+  deletedAt DateTime?
+  isSynced  Boolean    @default(false)
+  syncedAt  DateTime?
+
+  @@index([licenseId, date])
+  @@index([licenseId, kind, refId])
+  @@index([isSynced])
+}
+
+model AccountGroup {
+  id        String         @id @default(uuid())
+  name      String         @unique
+  code      String?
+  parentId  String?
+  nature    AccountNature
+  section   String?
+  sortOrder Int?
+  isSystem  Boolean        @default(true)
+  accounts  Account[]
+  parent    AccountGroup?  @relation("AccountGroupParent", fields: [parentId], references: [id])
+  children  AccountGroup[] @relation("AccountGroupParent")
+
+  @@index([section, sortOrder])
+}
+
+model Account {
+  id                     String                  @id @default(uuid())
+  licenseId              String
+  name                   String
+  code                   String?
+  groupId                String
+  isSystem               Boolean                 @default(false)
+  taxType                String?
+  gstComponent           String?
+  rate                   Decimal?                @db.Decimal(5, 2)
+  createdAt              DateTime?
+  updatedAt              DateTime?
+  deletedAt              DateTime?
+  group                  AccountGroup            @relation(fields: [groupId], references: [id])
+  meta                   AccountMeta[]
+  openingBals            AccountOpeningBalance[]
+  journalLines           JournalLine[]
+  cessDefaults           TaxCategoryDefault[]    @relation("CessAccount")
+  inputCgstDefaults      TaxCategoryDefault[]    @relation("InputCgstAccount")
+  inputIgstDefaults      TaxCategoryDefault[]    @relation("InputIgstAccount")
+  inputSgstDefaults      TaxCategoryDefault[]    @relation("InputSgstAccount")
+  outputCgstDefaults     TaxCategoryDefault[]    @relation("OutputCgstAccount")
+  outputIgstDefaults     TaxCategoryDefault[]    @relation("OutputIgstAccount")
+  outputSgstDefaults     TaxCategoryDefault[]    @relation("OutputSgstAccount")
+  purchaseDefaults       TaxCategoryDefault[]    @relation("PurchaseAccount")
+  purchaseReturnDefaults TaxCategoryDefault[]    @relation("PurchaseReturnAccount")
+  salesDefaults          TaxCategoryDefault[]    @relation("SalesAccount")
+  salesReturnDefaults    TaxCategoryDefault[]    @relation("SalesReturnAccount")
+  singleTaxDefaults      TaxCategoryDefault[]    @relation("SingleTaxAccount")
+
+  @@unique([licenseId, name])
+  @@unique([licenseId, code])
+  @@index([licenseId, name])
+  @@index([groupId])
+}
+
+model JournalEntry {
+  id        String        @id @default(uuid())
+  licenseId String
+  date      DateTime
+  refType   String?
+  refId     String?
+  narration String?
+  createdAt DateTime?
+  postedBy  String?
+  lines     JournalLine[]
+
+  @@index([licenseId, date])
+  @@index([licenseId, refType, refId])
+}
+
+model JournalLine {
+  id        String       @id @default(uuid())
+  entryId   String
+  accountId String
+  debit     Decimal      @default(0) @db.Decimal(14, 2)
+  credit    Decimal      @default(0) @db.Decimal(14, 2)
+  lineNo    Int?
+  createdAt DateTime?
+  updatedAt DateTime?
+  account   Account      @relation(fields: [accountId], references: [id])
+  entry     JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId, lineNo])
+  @@index([accountId])
+}
+
+model PostingRule {
+  id              String  @id @default(uuid())
+  event           String
+  taxMode         String?
+  lineRole        String
+  accountSelector String
+}
+
+model AccountOpeningBalance {
+  id        String    @id @default(uuid())
+  accountId String
+  fyStart   String
+  amount    Decimal   @default(0) @db.Decimal(14, 2)
+  side      String
+  asOfDate  DateTime
+  createdAt DateTime?
+  updatedAt DateTime?
+  account   Account   @relation(fields: [accountId], references: [id])
+
+  @@unique([accountId, fyStart])
+  @@index([accountId, fyStart])
+}
+
+model AccountMeta {
+  id        String    @id @default(uuid())
+  accountId String
+  key       String
+  value     String?
+  createdAt DateTime?
+  updatedAt DateTime?
+  account   Account   @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, key])
+}
+
+model TaxCategory {
+  id           String                 @id @default(uuid())
+  licenseId    String
+  code         String
+  name         String
+  rate         Decimal                @db.Decimal(5, 2)
+  isInterstate Boolean                @default(false)
+  cessRate     Decimal?               @db.Decimal(5, 2)
+  calcMethod   String                 @default("FIXED")
+  createdAt    DateTime?
+  updatedAt    DateTime?
+  components   TaxCategoryComponent[]
+  defaults     TaxCategoryDefault?
+  taxCodeMap   TaxCodeMap[]
+
+  @@unique([licenseId, code])
+}
+
+model TaxCategoryComponent {
+  id         String       @id @default(uuid())
+  categoryId String
+  component  TaxComponent
+  rate       Decimal      @db.Decimal(5, 2)
+  createdAt  DateTime?
+  updatedAt  DateTime?
+  category   TaxCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+model TaxCategoryDefault {
+  id                      String      @id @default(uuid())
+  categoryId              String      @unique
+  salesAccountId          String?
+  purchaseAccountId       String?
+  salesReturnAccountId    String?
+  purchaseReturnAccountId String?
+  outputCgstAccountId     String?
+  outputSgstAccountId     String?
+  outputIgstAccountId     String?
+  inputCgstAccountId      String?
+  inputSgstAccountId      String?
+  inputIgstAccountId      String?
+  cessAccountId           String?
+  singleTaxAccountId      String?
+  createdAt               DateTime?
+  updatedAt               DateTime?
+  category                TaxCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  cessAccount             Account?    @relation("CessAccount", fields: [cessAccountId], references: [id])
+  inputCgstAccount        Account?    @relation("InputCgstAccount", fields: [inputCgstAccountId], references: [id])
+  inputIgstAccount        Account?    @relation("InputIgstAccount", fields: [inputIgstAccountId], references: [id])
+  inputSgstAccount        Account?    @relation("InputSgstAccount", fields: [inputSgstAccountId], references: [id])
+  outputCgstAccount       Account?    @relation("OutputCgstAccount", fields: [outputCgstAccountId], references: [id])
+  outputIgstAccount       Account?    @relation("OutputIgstAccount", fields: [outputIgstAccountId], references: [id])
+  outputSgstAccount       Account?    @relation("OutputSgstAccount", fields: [outputSgstAccountId], references: [id])
+  purchaseAccount         Account?    @relation("PurchaseAccount", fields: [purchaseAccountId], references: [id])
+  purchaseReturnAccount   Account?    @relation("PurchaseReturnAccount", fields: [purchaseReturnAccountId], references: [id])
+  salesAccount            Account?    @relation("SalesAccount", fields: [salesAccountId], references: [id])
+  salesReturnAccount      Account?    @relation("SalesReturnAccount", fields: [salesReturnAccountId], references: [id])
+  singleTaxAccount        Account?    @relation("SingleTaxAccount", fields: [singleTaxAccountId], references: [id])
+}
+
+model TaxCodeMap {
+  id             String      @id @default(uuid())
+  licenseId      String
+  productTaxCode String
+  categoryId     String
+  category       TaxCategory @relation(fields: [categoryId], references: [id])
+
+  @@unique([licenseId, productTaxCode])
+}
+
+model ShopSettings {
+  licenseId           String    @id
+  shopName            String
+  logoDataUrl         String?
+  addressLine1        String?
+  addressLine2        String?
+  city                String?
+  state               String?
+  pincode             String?
+  mobile              String?
+  email               String?
+  gstin               String?
+  footerNote          String?
+  authorizedSignatory String?
+  createdAt           DateTime?
+  updatedAt           DateTime?
+}
+
+model LabelPrinter {
+  id             String    @id @default(uuid())
+  licenseId      String
+  name           String
+  engine         String
+  printerName    String
+  connectionType String?
+  host           String?
+  port           Int?
+  dpi            Int?
+  isDefault      Boolean   @default(false)
+  createdAt      DateTime?
+  updatedAt      DateTime?
+  deletedAt      DateTime?
+}
+
+model LabelTemplate {
+  id               String                 @id @default(uuid())
+  licenseId        String
+  name             String
+  engine           String
+  templatePath     String
+  widthMm          Decimal?               @db.Decimal(6, 2)
+  heightMm         Decimal?               @db.Decimal(6, 2)
+  defaultPrinterId String?
+  createdAt        DateTime?
+  updatedAt        DateTime?
+  deletedAt        DateTime?
+  mappings         LabelTemplateMapping[]
+}
+
+model LabelTemplateMapping {
+  id            String        @id @default(uuid())
+  templateId    String
+  appField      String
+  externalField String
+  createdAt     DateTime?
+  updatedAt     DateTime?
+  template      LabelTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model LabelPrintJob {
+  id          String    @id @default(uuid())
+  licenseId   String
+  templateId  String?
+  printerId   String?
+  engine      String
+  status      String
+  payloadJson String
+  errorText   String?
+  createdAt   DateTime?
+  updatedAt   DateTime?
+}
+
+model UnitMaster {
+  id        String    @id @default(uuid())
+  licenseId String
+  code      String
+  label     String
+  isDefault Boolean   @default(false)
+  sortOrder Int       @default(999)
+  createdAt DateTime?
+  updatedAt DateTime?
+  deletedAt DateTime?
+
+  @@unique([licenseId, code])
+  @@index([licenseId, deletedAt])
+  @@map("units")
+}
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  USER
+}
+
+enum SaleType {
+  DIRECT
+  FRANCHISE
+}
+
+enum TaxPercent {
+  NT
+  P5
+  P12
+  P18
+  P28
+}
+
+enum AccountNature {
+  ASSET
+  LIABILITY
+  INCOME
+  EXPENSE
+}
+
+enum SupplierTxKind {
+  OPENING
+  PURCHASE
+  RETURN
+  PAYMENT
+  ADJUSTMENT
+}
+
+enum CustomerTxKind {
+  OPENING
+  SALE
+  RETURN
+  RECEIPT
+  ADJUSTMENT
+}
+
+enum CashTxKind {
+  OPENING
+  PURCHASE
+  SALE
+  PAYMENT
+  RECEIPT
+  ADJUSTMENT
+}
+
+enum TaxComponent {
+  CGST
+  SGST
+  IGST
+  CESS
+}
+
+enum LicenseTier {
+  PRO
+  LITE
+  WEB
 }
