@@ -10,24 +10,14 @@ export type SyncableModel =
   | "purchaseItem"
   | "sale"
   | "saleItem"
-  | "customer";
+  | "customer"
+  | "category"
+  | "brand"
+  | "taxCategory"
+  | "shopSettings"
+  | "unit";
 
-function getDelegate(entity: SyncableModel) {
-  const map: Record<SyncableModel, any> = {
-    product: prisma.product,
-    supplier: prisma.supplier,
-    purchase: prisma.purchase,
-    purchaseItem: prisma.purchaseItem,
-    sale: prisma.sale,
-    saleItem: prisma.saleItem,
-    customer: prisma.customer,
-  };
-  const delegate = map[entity];
-  if (!delegate) throw new Error(`Unknown sync entity: ${entity}`);
-  return delegate;
-}
-
-// ── Field whitelists — only known Prisma fields pass through ─────────────
+// ── Field allow-lists ─────────────────────────────────────────────────────────
 
 const PRODUCT_FIELDS = [
   "licenseId",
@@ -55,7 +45,6 @@ const PRODUCT_FIELDS = [
   "isSynced",
   "syncedAt",
 ];
-
 const SUPPLIER_FIELDS = [
   "licenseId",
   "code",
@@ -87,21 +76,244 @@ const SUPPLIER_FIELDS = [
   "isSynced",
   "syncedAt",
 ];
+const CATEGORY_FIELDS = [
+  "licenseId",
+  "name",
+  "parentId",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+const BRAND_FIELDS = [
+  "licenseId",
+  "name",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+const TAX_CATEGORY_FIELDS = [
+  "licenseId",
+  "code",
+  "name",
+  "rate",
+  "isInterstate",
+  "cessRate",
+  "calcMethod",
+  "createdAt",
+  "updatedAt",
+  "isSynced",
+  "syncedAt",
+];
+const SHOP_SETTINGS_FIELDS = [
+  "shopName",
+  "logoUrl",
+  "addressLine1",
+  "addressLine2",
+  "city",
+  "state",
+  "pincode",
+  "mobile",
+  "email",
+  "gstin",
+  "footerNote",
+  "authorizedSignatory",
+  "createdAt",
+  "updatedAt",
+  "isSynced",
+  "syncedAt",
+];
+const UNIT_FIELDS = [
+  "licenseId",
+  "code",
+  "label",
+  "isDefault",
+  "sortOrder",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+const PURCHASE_FIELDS = [
+  // NOTE: userId intentionally excluded — desktop userId is not a Neon UUID
+  "slNo",
+  "billNo",
+  "licenseId",
+  "supplierId",
+  "supplierName",
+  "department",
+  "debitAccount",
+  "natureOfEntry",
+  "purchaseType",
+  "purchaseBatchNo",
+  "purchaseDate",
+  "entryTime",
+  "totalAmount",
+  "discount",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+const PURCHASE_ITEM_FIELDS = [
+  // NOTE: no licenseId — PurchaseItem doesn't have that column in Neon
+  "purchaseId",
+  "productId",
+  "barcode",
+  "quantity",
+  "unit",
+  "rate",
+  "mrp",
+  "taxPercent",
+  "taxAmount",
+  "discount",
+  "discountType",
+  "salePrice",
+  "profit",
+  "totalCost",
+  "billedValue",
+  "batchNo",
+  "batchId",
+  "purchaseBatchNo",
+  "mfgDate",
+  "expiryDate",
+  "lineNo",
+  "isFree",
+  "effectiveUnitValue",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+const SALE_FIELDS = [
+  "slNo",
+  "billNo",
+  "userId",
+  "licenseId",
+  "customerId",
+  "customerName",
+  "department",
+  "debitAccount",
+  "natureOfEntry",
+  "saleType",
+  "saleDate",
+  "entryTime",
+  "totalAmount",
+  "discount",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+const SALE_ITEM_FIELDS = [
+  "saleId",
+  "productId",
+  "barcode",
+  "quantity",
+  "unit",
+  "rate",
+  "mrp",
+  "taxPercent",
+  "taxAmount",
+  "discount",
+  "discountType",
+  "salePrice",
+  "profit",
+  "totalCost",
+  "billedValue",
+  "batchNo",
+  "batchId",
+  "mfgDate",
+  "expiryDate",
+  "lineNo",
+  "isFree",
+  "effectiveUnitValue",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+// ── Registry ──────────────────────────────────────────────────────────────────
 
 const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   product: PRODUCT_FIELDS,
   supplier: SUPPLIER_FIELDS,
+  category: CATEGORY_FIELDS,
+  brand: BRAND_FIELDS,
+  taxCategory: TAX_CATEGORY_FIELDS,
+  shopSettings: SHOP_SETTINGS_FIELDS,
+  unit: UNIT_FIELDS,
+  purchase: PURCHASE_FIELDS,
+  purchaseItem: PURCHASE_ITEM_FIELDS,
+  sale: SALE_FIELDS,
+  saleItem: SALE_ITEM_FIELDS,
 };
+
+const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
+  taxCategory: ["isInterstate"],
+  unit: ["isDefault"],
+  purchaseItem: ["isFree"],
+  saleItem: ["isFree"],
+};
+
+const COMPOSITE_CODE_ENTITIES: SyncableModel[] = ["unit", "taxCategory"];
+
+// Entities where the Prisma model has no licenseId column — can't use generic
+// licenseId-based select or FK guard
+const NO_LICENSE_ID_ENTITIES: SyncableModel[] = ["purchaseItem", "saleItem"];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function stripFields(entity: SyncableModel, data: Record<string, any>) {
   const allowed = ENTITY_FIELDS[entity];
   if (!allowed) return data;
+  const boolFields = BOOLEAN_FIELDS[entity] ?? [];
   return Object.fromEntries(
-    Object.entries(data).filter(([k]) => allowed.includes(k)),
+    Object.entries(data)
+      .filter(([k]) => allowed.includes(k))
+      .map(([k, v]) => [k, boolFields.includes(k) ? Boolean(v) : v]),
   );
 }
 
-// ── Types ────────────────────────────────────────────────────────────────
+function getPrismaModelName(entity: SyncableModel): string {
+  if (entity === "unit") return "unitMaster";
+  return entity;
+}
+
+function getDelegate(tx: any, entity: SyncableModel) {
+  const modelName = getPrismaModelName(entity);
+  const delegate = tx[modelName];
+  if (!delegate)
+    throw new Error(
+      `Unknown sync entity: ${entity} (prisma model: ${modelName})`,
+    );
+  return delegate;
+}
+
+function getUpsertWhere(
+  entity: SyncableModel,
+  data: any,
+  isShopSettings: boolean,
+): any {
+  if (isShopSettings) return { licenseId: data.licenseId };
+  if (COMPOSITE_CODE_ENTITIES.includes(entity)) {
+    return { licenseId_code: { licenseId: data.licenseId, code: data.code } };
+  }
+  return { id: data.id };
+}
+
+// ── Push ──────────────────────────────────────────────────────────────────────
 
 export type PushRecord = {
   id: string;
@@ -116,77 +328,207 @@ export type PushResult = {
   serverUpdatedAt: string;
 };
 
-// ── Push ─────────────────────────────────────────────────────────────────
-
 export async function handlePush(
   entity: SyncableModel,
   licenseId: string,
   records: PushRecord[],
+  cloudUserId?: string, // ✅ 4th parameter — cloud user UUID injected into sale records
 ): Promise<PushResult[]> {
-  const delegate = getDelegate(entity);
-  const results: PushResult[] = [];
   const serverNow = new Date().toISOString();
+  const isShopSettings = entity === "shopSettings";
+  const isComposite = COMPOSITE_CODE_ENTITIES.includes(entity);
+  const isPurchaseItem = entity === "purchaseItem";
+  const isSaleItem = entity === "saleItem";
+  const noLicenseId = NO_LICENSE_ID_ENTITIES.includes(entity);
+  const results: PushResult[] = [];
+  const prismaModelName = getPrismaModelName(entity);
 
-  for (const record of records) {
-    try {
-      const existing = await delegate.findUnique({
-        where: { id: record.id },
-        select: { id: true, updatedAt: true, licenseId: true },
-      });
+  // ── purchaseItem: skip records whose parent purchase doesn't exist yet ──────
+  let validRecords = records;
+  if (isPurchaseItem) {
+    const purchaseIds = [
+      ...new Set(records.map((r) => r.purchaseId).filter(Boolean)),
+    ];
+    const existingPurchases = await prisma.purchase.findMany({
+      where: { id: { in: purchaseIds }, licenseId },
+      select: { id: true },
+    });
+    const validPurchaseIds = new Set(existingPurchases.map((p) => p.id));
 
-      if (existing && existing.licenseId !== licenseId) continue;
+    validRecords = records.filter((r) => {
+      if (!validPurchaseIds.has(r.purchaseId)) {
+        // Parent not synced yet — return not-accepted so client retries
+        results.push({ id: r.id, accepted: false, serverUpdatedAt: serverNow });
+        return false;
+      }
+      return true;
+    });
+  }
 
-      const incomingUpdatedAt = new Date(record.updatedAt).getTime();
-      const existingUpdatedAt = existing
-        ? new Date(existing.updatedAt).getTime()
-        : 0;
+  // ── saleItem: skip records whose parent sale doesn't exist yet ──────
+  if (isSaleItem) {
+    const saleIds = [...new Set(records.map((r) => r.saleId).filter(Boolean))];
+    const existingSales = await prisma.sale.findMany({
+      where: { id: { in: saleIds }, licenseId },
+      select: { id: true },
+    });
+    const validSaleIds = new Set(existingSales.map((s) => s.id));
 
-      if (!existing) {
-        const { id, ...rest } = record;
-        await delegate.create({
-          data: {
-            id,
-            licenseId,
-            ...stripFields(entity, rest),
-            isSynced: true,
-            syncedAt: serverNow,
-          },
-        });
-        results.push({
-          id: record.id,
-          accepted: true,
-          serverUpdatedAt: serverNow,
-        });
-      } else if (incomingUpdatedAt > existingUpdatedAt) {
-        await delegate.update({
-          where: { id: record.id },
-          data: {
-            ...stripFields(entity, record),
-            isSynced: true,
-            syncedAt: serverNow,
-          },
-        });
-        results.push({
-          id: record.id,
-          accepted: true,
-          serverUpdatedAt: serverNow,
+    validRecords = validRecords.filter((r) => {
+      if (!validSaleIds.has(r.saleId)) {
+        results.push({ id: r.id, accepted: false, serverUpdatedAt: serverNow });
+        return false;
+      }
+      return true;
+    });
+  }
+
+  if (validRecords.length === 0) return results;
+
+  // ── Pre-fetch existing records ────────────────────────────────────────────
+  let existingMap = new Map<string, any>();
+
+  if (isShopSettings) {
+    const existing = await prisma.shopSettings.findUnique({
+      where: { licenseId },
+      select: { licenseId: true, updatedAt: true },
+    });
+    if (existing) existingMap.set(licenseId, existing);
+  } else if (isComposite) {
+    const codes = validRecords.map((r) => r.code).filter(Boolean);
+    const existing = await (prisma as any)[prismaModelName].findMany({
+      where: { licenseId, code: { in: codes } },
+      select: { id: true, updatedAt: true, licenseId: true, code: true },
+    });
+    const byCode = new Map(existing.map((r: any) => [r.code, r]));
+    for (const record of validRecords) {
+      const found = byCode.get(record.code);
+      if (found) existingMap.set(record.id, found);
+    }
+  } else if (noLicenseId) {
+    // PurchaseItem/SaleItem have no licenseId column — select only id + updatedAt
+    const existing = await (prisma as any)[prismaModelName].findMany({
+      where: { id: { in: validRecords.map((r) => r.id) } },
+      select: { id: true, updatedAt: true },
+    });
+    existingMap = new Map(existing.map((r: any) => [r.id, r]));
+  } else {
+    const existing = await (prisma as any)[prismaModelName].findMany({
+      where: { id: { in: validRecords.map((r) => r.id) } },
+      select: { id: true, updatedAt: true, licenseId: true },
+    });
+    existingMap = new Map(existing.map((r: any) => [r.id, r]));
+  }
+
+  // ── Decide create vs update ───────────────────────────────────────────────
+  const toCreate: any[] = [];
+  const toUpdate: { where: any; data: any; resultId: string }[] = [];
+
+  for (const record of validRecords) {
+    const key = isShopSettings ? licenseId : record.id;
+    const existing = existingMap.get(key);
+
+    // Security: reject cross-license writes (skip for models without licenseId)
+    if (
+      !isShopSettings &&
+      !noLicenseId &&
+      existing &&
+      existing.licenseId !== licenseId
+    ) {
+      continue;
+    }
+
+    const incomingTs = new Date(record.updatedAt).getTime();
+    const existingTs = existing
+      ? new Date(
+          existing.updatedAt instanceof Date
+            ? existing.updatedAt.toISOString()
+            : existing.updatedAt,
+        ).getTime()
+      : 0;
+    const stripped = stripFields(entity, record);
+
+    if (!existing) {
+      if (isShopSettings) {
+        toCreate.push({
+          licenseId,
+          ...stripped,
+          isSynced: true,
+          syncedAt: serverNow,
         });
       } else {
-        results.push({
-          id: record.id,
-          accepted: false,
-          serverUpdatedAt: existing.updatedAt.toISOString(),
+        const { id, ...rest } = record;
+        let createData: any = {
+          id,
+          // Only add licenseId for entities that have it
+          ...(noLicenseId ? {} : { licenseId }),
+          ...stripFields(entity, rest),
+          isSynced: true,
+          syncedAt: serverNow,
+        };
+
+        // ✅ Inject cloud user UUID for sale records — overwrites any incoming
+        // desktop userId which is not a valid Neon UUID
+        if (entity === "sale" && cloudUserId) {
+          createData.userId = cloudUserId;
+        }
+
+        toCreate.push(createData);
+      }
+      results.push({ id: key, accepted: true, serverUpdatedAt: serverNow });
+    } else if (incomingTs > existingTs) {
+      let updateData: any = {
+        ...stripped,
+        isSynced: true,
+        syncedAt: serverNow,
+      };
+
+      // ✅ Also overwrite userId on update to keep cloud UUID consistent
+      if (entity === "sale" && cloudUserId) {
+        updateData.userId = cloudUserId;
+      }
+
+      toUpdate.push({
+        where: isShopSettings ? { licenseId } : { id: existing.id },
+        data: updateData,
+        resultId: key,
+      });
+      results.push({ id: key, accepted: true, serverUpdatedAt: serverNow });
+    } else {
+      results.push({
+        id: key,
+        accepted: false,
+        serverUpdatedAt:
+          existing.updatedAt instanceof Date
+            ? existing.updatedAt.toISOString()
+            : existing.updatedAt,
+      });
+    }
+  }
+
+  // ── Single transaction ────────────────────────────────────────────────────
+  if (toCreate.length > 0 || toUpdate.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      const delegate = getDelegate(tx, entity);
+
+      for (const data of toCreate) {
+        await delegate.upsert({
+          where: getUpsertWhere(entity, data, isShopSettings),
+          create: data,
+          update: data,
         });
       }
-    } catch (err) {
-      console.error(`[sync:push] Failed for ${entity}:${record.id}`, err);
-    }
+
+      for (const { where, data } of toUpdate) {
+        await delegate.update({ where, data });
+      }
+    });
   }
 
   return results;
 }
 
-// ── Pull ─────────────────────────────────────────────────────────────────
+// ── Pull ──────────────────────────────────────────────────────────────────────
 
 export async function handlePull(
   entity: SyncableModel,
@@ -194,22 +536,98 @@ export async function handlePull(
   since: string | null,
   limit = 500,
 ): Promise<{ records: any[]; hasMore: boolean; pulledAt: string }> {
-  const delegate = getDelegate(entity);
   const pulledAt = new Date().toISOString();
 
-  const where: any = { licenseId };
-  if (since) {
-    where.updatedAt = { gt: new Date(since) };
+  if (entity === "shopSettings") {
+    const record = await prisma.shopSettings.findUnique({
+      where: { licenseId },
+    });
+    return { records: record ? [record] : [], hasMore: false, pulledAt };
   }
 
-  const records = await delegate.findMany({
+  const prismaModelName = getPrismaModelName(entity);
+
+  if (entity === "taxCategory") {
+    const where: any = { licenseId };
+    if (since) where.updatedAt = { gt: new Date(since) };
+    const records = await (prisma as any).taxCategory.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+      include: { components: true, defaults: true },
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  if (entity === "purchase") {
+    const where: any = { licenseId };
+    if (since) where.updatedAt = { gt: new Date(since) };
+    const records = await prisma.purchase.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  if (entity === "purchaseItem") {
+    // purchaseItem has no licenseId — scope through parent purchase
+    const where: any = {
+      purchase: { licenseId },
+      ...(since ? { updatedAt: { gt: new Date(since) } } : {}),
+    };
+    const records = await prisma.purchaseItem.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  if (entity === "sale") {
+    const where: any = { licenseId };
+    if (since) where.updatedAt = { gt: new Date(since) };
+    const records = await prisma.sale.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  if (entity === "saleItem") {
+    const where: any = {
+      sale: { licenseId },
+      ...(since ? { updatedAt: { gt: new Date(since) } } : {}),
+    };
+    const records = await prisma.saleItem.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  // Generic path for all other entities
+  const where: any = { licenseId };
+  if (since) where.updatedAt = { gt: new Date(since) };
+
+  const records = await (prisma as any)[prismaModelName].findMany({
     where,
     orderBy: { updatedAt: "asc" },
     take: limit + 1,
   });
-
   const hasMore = records.length > limit;
   if (hasMore) records.pop();
-
   return { records, hasMore, pulledAt };
 }

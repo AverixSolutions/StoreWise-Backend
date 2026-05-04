@@ -7,6 +7,9 @@ import authRoutes from "./routes/auth.routes";
 import franchiseRoutes from "./routes/franchise.routes";
 import syncRoutes from "./routes/sync.routes";
 import uploadRoutes from "./routes/upload.routes";
+import purchaseRoutes from "./routes/purchase.routes";
+import supplierRoutes from "./routes/supplier.routes";
+import saleRoutes from "./routes/sale.routes";
 
 const app = express();
 app.use(cors());
@@ -23,5 +26,8 @@ app.use("/api/users", userRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/sync", syncRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/purchases", purchaseRoutes);
+app.use("/api/suppliers", supplierRoutes);
+app.use("/api/sales", saleRoutes);
 
 export default app;

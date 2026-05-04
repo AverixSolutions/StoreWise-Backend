@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model User {
@@ -38,6 +39,8 @@ model License {
   tier               LicenseTier        @default(PRO)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
+  categories         Category[]
+  brands             Brand[]
   customers          Customer[]
   franchise          Franchise?         @relation(fields: [franchiseId], references: [id])
   roleLimits         LicenseRoleLimit[]
@@ -161,10 +164,15 @@ model Category {
   createdAt DateTime?
   updatedAt DateTime?
   deletedAt DateTime?
+  isSynced  Boolean    @default(false)
+  syncedAt  DateTime? // ← ADD
   parent    Category?  @relation("CategoryParent", fields: [parentId], references: [id])
   children  Category[] @relation("CategoryParent")
+  license   License    @relation(fields: [licenseId], references: [id])
 
   @@index([licenseId, deletedAt])
+  @@index([licenseId, updatedAt])
+  @@index([isSynced])
 }
 
 model Brand {
@@ -174,8 +182,13 @@ model Brand {
   createdAt DateTime?
   updatedAt DateTime?
   deletedAt DateTime?
+  isSynced  Boolean   @default(false)
+  syncedAt  DateTime?
+  license   License   @relation(fields: [licenseId], references: [id])
 
   @@index([licenseId, deletedAt])
+  @@index([licenseId, updatedAt])
+  @@index([isSynced])
 }
 
 model Purchase {
@@ -788,11 +801,15 @@ model TaxCategory {
   calcMethod   String                 @default("FIXED")
   createdAt    DateTime?
   updatedAt    DateTime?
+  isSynced     Boolean                @default(false)
+  syncedAt     DateTime?
   components   TaxCategoryComponent[]
   defaults     TaxCategoryDefault?
   taxCodeMap   TaxCodeMap[]
 
   @@unique([licenseId, code])
+  @@index([licenseId, updatedAt])
+  @@index([isSynced])
 }
 
 model TaxCategoryComponent {
@@ -850,7 +867,7 @@ model TaxCodeMap {
 model ShopSettings {
   licenseId           String    @id
   shopName            String
-  logoDataUrl         String?
+  logoUrl             String?
   addressLine1        String?
   addressLine2        String?
   city                String?
@@ -863,6 +880,8 @@ model ShopSettings {
   authorizedSignatory String?
   createdAt           DateTime?
   updatedAt           DateTime?
+  isSynced            Boolean   @default(false)
+  syncedAt            DateTime?
 }
 
 model LabelPrinter {
@@ -929,9 +948,12 @@ model UnitMaster {
   createdAt DateTime?
   updatedAt DateTime?
   deletedAt DateTime?
+  isSynced  Boolean   @default(false)
+  syncedAt  DateTime?
 
   @@unique([licenseId, code])
   @@index([licenseId, deletedAt])
+  @@index([licenseId, updatedAt])
   @@map("units")
 }
 
