@@ -792,6 +792,8 @@ export async function saveSaleHold(payload: {
             ? JSON.stringify(payload.rows)
             : existing.rowsJson,
         updatedAt: now,
+        isSynced: true,
+        syncedAt: now,
       },
     });
 
@@ -811,7 +813,8 @@ export async function saveSaleHold(payload: {
         rowsJson: JSON.stringify(payload.rows || []),
         createdAt: now,
         updatedAt: now,
-        isSynced: false,
+        isSynced: true,
+        syncedAt: now,
       },
     });
   });
@@ -871,9 +874,15 @@ export async function getSaleHold(licenseId: string, id: string) {
 }
 
 export async function deleteSaleHold(licenseId: string, id: string) {
+  const now = new Date();
   await prisma.saleHold.updateMany({
     where: { id, licenseId },
-    data: { deletedAt: new Date() },
+    data: {
+      deletedAt: now,
+      updatedAt: now,
+      isSynced: true,
+      syncedAt: now,
+    },
   });
   return { success: true };
 }

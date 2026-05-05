@@ -18,6 +18,8 @@ const ALLOWED_ENTITIES: SyncableModel[] = [
   "taxCategory",
   "shopSettings",
   "unit",
+  "saleHold",
+  "purchaseHold",
 ];
 
 router.post(

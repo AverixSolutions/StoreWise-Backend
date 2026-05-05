@@ -15,7 +15,9 @@ export type SyncableModel =
   | "brand"
   | "taxCategory"
   | "shopSettings"
-  | "unit";
+  | "unit"
+  | "saleHold"
+  | "purchaseHold"; // ← added
 
 // ── Field allow-lists ─────────────────────────────────────────────────────────
 
@@ -244,6 +246,35 @@ const SALE_ITEM_FIELDS = [
   "syncedAt",
 ];
 
+const SALE_HOLD_FIELDS = [
+  "licenseId",
+  "userId",
+  "holdNo",
+  "title",
+  "headerJson",
+  "rowsJson",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+// ← added
+const PURCHASE_HOLD_FIELDS = [
+  "licenseId",
+  "userId",
+  "holdNo",
+  "title",
+  "headerJson",
+  "rowsJson",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
@@ -258,6 +289,8 @@ const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   purchaseItem: PURCHASE_ITEM_FIELDS,
   sale: SALE_FIELDS,
   saleItem: SALE_ITEM_FIELDS,
+  saleHold: SALE_HOLD_FIELDS,
+  purchaseHold: PURCHASE_HOLD_FIELDS, // ← added
 };
 
 const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
@@ -268,6 +301,7 @@ const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
 };
 
 const COMPOSITE_CODE_ENTITIES: SyncableModel[] = ["unit", "taxCategory"];
+const COMPOSITE_HOLD_ENTITIES: SyncableModel[] = ["saleHold", "purchaseHold"]; // ← added purchaseHold
 
 // Entities where the Prisma model has no licenseId column — can't use generic
 // licenseId-based select or FK guard
@@ -309,6 +343,12 @@ function getUpsertWhere(
   if (isShopSettings) return { licenseId: data.licenseId };
   if (COMPOSITE_CODE_ENTITIES.includes(entity)) {
     return { licenseId_code: { licenseId: data.licenseId, code: data.code } };
+  }
+  if (entity === "saleHold" || entity === "purchaseHold") {
+    // ← added purchaseHold
+    return {
+      licenseId_holdNo: { licenseId: data.licenseId, holdNo: data.holdNo },
+    };
   }
   return { id: data.id };
 }
@@ -394,15 +434,45 @@ export async function handlePush(
       select: { licenseId: true, updatedAt: true },
     });
     if (existing) existingMap.set(licenseId, existing);
-  } else if (isComposite) {
-    const codes = validRecords.map((r) => r.code).filter(Boolean);
-    const existing = await (prisma as any)[prismaModelName].findMany({
-      where: { licenseId, code: { in: codes } },
-      select: { id: true, updatedAt: true, licenseId: true, code: true },
-    });
-    const byCode = new Map(existing.map((r: any) => [r.code, r]));
+  } else if (
+    isComposite ||
+    entity === "saleHold" ||
+    entity === "purchaseHold"
+  ) {
+    // ← added purchaseHold
+    // Use holdNo for hold entities, code for composite code entities
+    const keys =
+      entity === "saleHold" || entity === "purchaseHold"
+        ? validRecords.map((r) => r.holdNo)
+        : validRecords.map((r) => r.code).filter(Boolean);
+
+    const existing =
+      entity === "saleHold" || entity === "purchaseHold"
+        ? await (prisma as any)[prismaModelName].findMany({
+            where: { licenseId, holdNo: { in: keys } },
+            select: {
+              id: true,
+              updatedAt: true,
+              licenseId: true,
+              holdNo: true,
+            },
+          })
+        : await (prisma as any)[prismaModelName].findMany({
+            where: { licenseId, code: { in: keys } },
+            select: { id: true, updatedAt: true, licenseId: true, code: true },
+          });
+
+    const byKey =
+      entity === "saleHold" || entity === "purchaseHold"
+        ? new Map(existing.map((r: any) => [r.holdNo, r]))
+        : new Map(existing.map((r: any) => [r.code, r]));
+
     for (const record of validRecords) {
-      const found = byCode.get(record.code);
+      const lookupKey =
+        entity === "saleHold" || entity === "purchaseHold"
+          ? record.holdNo
+          : record.code;
+      const found = byKey.get(lookupKey);
       if (found) existingMap.set(record.id, found);
     }
   } else if (noLicenseId) {
@@ -609,6 +679,33 @@ export async function handlePull(
       ...(since ? { updatedAt: { gt: new Date(since) } } : {}),
     };
     const records = await prisma.saleItem.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  if (entity === "saleHold") {
+    const where: any = { licenseId };
+    if (since) where.updatedAt = { gt: new Date(since) };
+    const records = await prisma.saleHold.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  // ← added purchaseHold pull handler
+  if (entity === "purchaseHold") {
+    const where: any = { licenseId };
+    if (since) where.updatedAt = { gt: new Date(since) };
+    const records = await prisma.purchaseHold.findMany({
       where,
       orderBy: { updatedAt: "asc" },
       take: limit + 1,

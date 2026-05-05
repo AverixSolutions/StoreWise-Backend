@@ -842,6 +842,8 @@ export async function savePurchaseHold(payload: {
             ? JSON.stringify(payload.rows)
             : existing.rowsJson,
         updatedAt: now,
+        isSynced: true,
+        syncedAt: now,
       },
     });
 
@@ -861,7 +863,8 @@ export async function savePurchaseHold(payload: {
         rowsJson: JSON.stringify(payload.rows || []),
         createdAt: now,
         updatedAt: now,
-        isSynced: false,
+        isSynced: true,
+        syncedAt: now,
       },
     });
     return holdNo;
@@ -923,9 +926,15 @@ export async function getPurchaseHold(licenseId: string, id: string) {
 }
 
 export async function deletePurchaseHold(licenseId: string, id: string) {
+  const now = new Date();
   await prisma.purchaseHold.updateMany({
     where: { id, licenseId },
-    data: { deletedAt: new Date() },
+    data: {
+      deletedAt: now,
+      updatedAt: now,
+      isSynced: true,
+      syncedAt: now,
+    },
   });
   return { success: true };
 }
