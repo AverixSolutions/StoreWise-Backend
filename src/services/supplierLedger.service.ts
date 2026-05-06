@@ -259,14 +259,14 @@ export async function createSupplierPayment(payload: {
     if (!purchase)
       throw new Error(`Purchase ${a.purchaseId} not found or not credit`);
     const paidAgg = await prisma.supplierBillSettlement.aggregate({
-      where: { licenseId, purchaseId: a.purchaseId, deletedAt: null },
+      where: { licenseId, purchaseId: a.purchaseId },
       _sum: { amount: true },
     });
     const grand = Math.max(
       0,
       Number(purchase.totalAmount) - Number(purchase.discount ?? 0),
     );
-    const paid = Number(paidAgg._sum.amount ?? 0);
+    const paid = Number(paidAgg._sum?.amount ?? 0);
     const remaining = grand - paid;
     if (a.amount > remaining + 1e-6)
       throw new Error(

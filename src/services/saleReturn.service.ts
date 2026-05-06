@@ -711,8 +711,14 @@ export async function getSaleReturnFull(licenseId: string, id: string) {
   const items = await prisma.saleReturnItem.findMany({
     where: { returnId: id, deletedAt: null },
     orderBy: { lineNo: "asc" },
-    include: { product: true },
   });
+
+  const productIds = [...new Set(items.map((it) => it.productId))];
+  const products = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, name: true, code: true },
+  });
+  const productMap = new Map(products.map((pr) => [pr.id, pr]));
 
   return {
     success: true,
@@ -723,8 +729,8 @@ export async function getSaleReturnFull(licenseId: string, id: string) {
     },
     items: items.map((it) => ({
       ...it,
-      productName: it.product?.name ?? null,
-      productCode: it.product?.code ?? null,
+      productName: productMap.get(it.productId)?.name ?? null,
+      productCode: productMap.get(it.productId)?.code ?? null,
       rate: Number(it.rate),
       mrp: it.mrp != null ? Number(it.mrp) : null,
       taxAmount: Number(it.taxAmount),
