@@ -176,6 +176,7 @@ export interface CreatePurchaseInput {
   purchaseDate?: string | Date;
   entryTime?: string | Date | null;
   discount?: number;
+  typeId?: string | null;
 }
 
 export interface PurchaseItemInput {
@@ -255,6 +256,7 @@ export async function createPurchase(
         createdAt: now,
         updatedAt: now,
         isSynced: false,
+        typeId: purchase.typeId ?? null,
       },
     });
 
@@ -569,6 +571,7 @@ export async function updatePurchase(
         purchaseType: header.purchaseType ?? (existing.purchaseType as any),
         updatedAt: now,
         isSynced: false,
+        typeId: header.typeId ?? null,
       },
     });
 
@@ -742,6 +745,7 @@ export async function listPurchases(
         isSynced: true,
         deletedAt: true,
         syncedAt: true,
+        typeId: true,
       },
     }),
   ]);

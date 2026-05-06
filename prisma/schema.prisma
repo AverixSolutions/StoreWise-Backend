@@ -1,3 +1,4 @@
+// backend/prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -51,6 +52,7 @@ model License {
   saleReturns        SaleReturn[]
   suppliers          Supplier[]
   users              User[]
+  transactionTypes   TransactionType[]
 }
 
 model Franchise {
@@ -91,35 +93,36 @@ model Session {
 }
 
 model Product {
-  id            String         @id @default(uuid())
-  licenseId     String
-  code          String
-  codeNumber    Int
-  name          String
-  brand         String?
-  category      String?
-  subcategory   String?
-  productName   String?
-  model         String?
-  size          String?
-  shortCode     String?
-  unit          String
-  tax           TaxPercent
-  hsn           String?
-  costPrice     Decimal        @db.Decimal(10, 2)
-  salePrice     Decimal?       @db.Decimal(10, 2)
-  stock         Int            @default(0)
-  imagePath     String?
-  imageFileName String?
-  createdAt     DateTime?
-  updatedAt     DateTime
-  deletedAt     DateTime?
-  isSynced      Boolean        @default(false)
-  syncedAt      DateTime?
-  license       License        @relation(fields: [licenseId], references: [id])
-  batches       ProductBatch[]
-  purchaseItems PurchaseItem[]
-  saleItems     SaleItem[]
+  id                  String               @id @default(uuid())
+  licenseId           String
+  code                String
+  codeNumber          Int
+  name                String
+  brand               String?
+  category            String?
+  subcategory         String?
+  productName         String?
+  model               String?
+  size                String?
+  shortCode           String?
+  unit                String
+  tax                 TaxPercent
+  hsn                 String?
+  costPrice           Decimal              @db.Decimal(10, 2)
+  salePrice           Decimal?             @db.Decimal(10, 2)
+  stock               Int                  @default(0)
+  imagePath           String?
+  imageFileName       String?
+  createdAt           DateTime?
+  updatedAt           DateTime
+  deletedAt           DateTime?
+  isSynced            Boolean              @default(false)
+  syncedAt            DateTime?
+  license             License              @relation(fields: [licenseId], references: [id])
+  batches             ProductBatch[]
+  purchaseItems       PurchaseItem[]
+  saleItems           SaleItem[]
+  purchaseReturnItems PurchaseReturnItem[]
 
   @@unique([licenseId, code])
   @@unique([licenseId, codeNumber])
@@ -192,31 +195,34 @@ model Brand {
 }
 
 model Purchase {
-  id              String         @id @default(uuid())
-  slNo            Int?
-  billNo          String?
-  userId          String?
-  licenseId       String
-  supplierId      String?
-  supplierName    String?
-  department      String?
-  debitAccount    String?
-  natureOfEntry   String?
-  purchaseType    String?
-  purchaseBatchNo String?
-  purchaseDate    DateTime       @default(now())
-  entryTime       DateTime?
-  totalAmount     Decimal        @db.Decimal(10, 2)
-  discount        Decimal?       @db.Decimal(10, 2)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime?
-  deletedAt       DateTime?
-  isSynced        Boolean        @default(false)
-  syncedAt        DateTime?
-  license         License        @relation(fields: [licenseId], references: [id])
-  supplier        Supplier?      @relation(fields: [supplierId], references: [id])
-  user            User?          @relation(fields: [userId], references: [id])
-  items           PurchaseItem[]
+  id                      String                   @id @default(uuid())
+  slNo                    Int?
+  billNo                  String?
+  userId                  String?
+  licenseId               String
+  supplierId              String?
+  typeId                  String?
+  type                    TransactionType?         @relation(fields: [typeId], references: [id])
+  supplierName            String?
+  department              String?
+  debitAccount            String?
+  natureOfEntry           String?
+  purchaseType            String?
+  purchaseBatchNo         String?
+  purchaseDate            DateTime                 @default(now())
+  entryTime               DateTime?
+  totalAmount             Decimal                  @db.Decimal(10, 2)
+  discount                Decimal?                 @db.Decimal(10, 2)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime?
+  deletedAt               DateTime?
+  isSynced                Boolean                  @default(false)
+  syncedAt                DateTime?
+  license                 License                  @relation(fields: [licenseId], references: [id])
+  supplier                Supplier?                @relation(fields: [supplierId], references: [id])
+  user                    User?                    @relation(fields: [userId], references: [id])
+  items                   PurchaseItem[]
+  supplierBillSettlements SupplierBillSettlement[]
 
   @@unique([licenseId, slNo])
   @@index([licenseId, purchaseDate])
@@ -268,6 +274,8 @@ model PurchaseReturn {
   userId        String?
   licenseId     String
   supplierId    String?
+  typeId        String?
+  type          TransactionType?     @relation(fields: [typeId], references: [id])
   supplierName  String?
   billNo        String?
   department    String?
@@ -298,6 +306,7 @@ model PurchaseReturnItem {
   barcode            String?
   quantity           Int
   unit               String
+  isFree             Boolean        @default(false)
   rate               Decimal        @db.Decimal(10, 2)
   mrp                Decimal?       @db.Decimal(10, 2)
   taxPercent         TaxPercent
@@ -323,9 +332,7 @@ model PurchaseReturnItem {
   isSynced           Boolean        @default(false)
   syncedAt           DateTime?
   purchaseReturn     PurchaseReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
-
-  @@index([returnId, lineNo])
-  @@index([batchId])
+  product            Product        @relation(fields: [productId], references: [id])
 }
 
 model PurchaseHold {
@@ -365,30 +372,33 @@ model PurchaseReturnHold {
 }
 
 model Sale {
-  id            String     @id @default(uuid())
-  slNo          Int?
-  userId        String?
-  licenseId     String
-  customerId    String?
-  customerName  String?
-  billNo        String?
-  department    String?
-  debitAccount  String?
-  natureOfEntry String?
-  saleDate      DateTime   @default(now())
-  entryTime     DateTime?
-  totalAmount   Decimal    @db.Decimal(10, 2)
-  discount      Decimal?   @db.Decimal(10, 2)
-  saleType      String?
-  createdAt     DateTime?
-  updatedAt     DateTime?
-  deletedAt     DateTime?
-  isSynced      Boolean    @default(false)
-  syncedAt      DateTime?
-  customer      Customer?  @relation(fields: [customerId], references: [id])
-  license       License    @relation(fields: [licenseId], references: [id])
-  user          User?      @relation(fields: [userId], references: [id])
-  items         SaleItem[]
+  id                      String                   @id @default(uuid())
+  slNo                    Int?
+  userId                  String?
+  licenseId               String
+  customerId              String?
+  typeId                  String?
+  type                    TransactionType?         @relation(fields: [typeId], references: [id])
+  customerName            String?
+  billNo                  String?
+  department              String?
+  debitAccount            String?
+  natureOfEntry           String?
+  saleDate                DateTime                 @default(now())
+  entryTime               DateTime?
+  totalAmount             Decimal                  @db.Decimal(10, 2)
+  discount                Decimal?                 @db.Decimal(10, 2)
+  saleType                String?
+  createdAt               DateTime?
+  updatedAt               DateTime?
+  deletedAt               DateTime?
+  isSynced                Boolean                  @default(false)
+  syncedAt                DateTime?
+  customer                Customer?                @relation(fields: [customerId], references: [id])
+  license                 License                  @relation(fields: [licenseId], references: [id])
+  user                    User?                    @relation(fields: [userId], references: [id])
+  items                   SaleItem[]
+  customerBillSettlements CustomerBillSettlement[]
 
   @@unique([licenseId, slNo])
   @@index([licenseId, saleDate])
@@ -439,6 +449,8 @@ model SaleReturn {
   userId        String?
   licenseId     String
   customerId    String?
+  typeId        String?
+  type          TransactionType? @relation(fields: [typeId], references: [id])
   customerName  String?
   billNo        String?
   department    String?
@@ -559,23 +571,27 @@ model Supplier {
 }
 
 model SupplierTransaction {
-  id          String                   @id @default(uuid())
-  licenseId   String
-  supplierId  String
-  kind        SupplierTxKind
-  refId       String?
-  refNo       String?
-  date        DateTime
-  amount      Decimal                  @db.Decimal(12, 2)
-  sign        Int
-  notes       String?
-  createdAt   DateTime?
-  updatedAt   DateTime
-  deletedAt   DateTime?
-  isSynced    Boolean                  @default(false)
-  syncedAt    DateTime?
-  settlements SupplierBillSettlement[]
-  supplier    Supplier                 @relation(fields: [supplierId], references: [id])
+  id                  String                   @id @default(uuid())
+  licenseId           String
+  supplierId          String
+  kind                SupplierTxKind
+  refId               String?
+  refNo               String?
+  date                DateTime
+  amount              Decimal                  @db.Decimal(12, 2)
+  sign                Int
+  notes               String?
+  createdAt           DateTime?
+  updatedAt           DateTime
+  deletedAt           DateTime?
+  isSynced            Boolean                  @default(false)
+  syncedAt            DateTime?
+  paymentStatus       String? // 'PENDING_CHEQUE' or 'CLEARED'
+  chequeNo            String?
+  chequeIssueDate     DateTime?
+  chequeClearanceDate DateTime?
+  settlements         SupplierBillSettlement[]
+  supplier            Supplier                 @relation(fields: [supplierId], references: [id])
 
   @@index([licenseId, supplierId, date])
   @@index([licenseId, kind, refId])
@@ -592,36 +608,38 @@ model SupplierBillSettlement {
   createdAt   DateTime?
   paymentTx   SupplierTransaction @relation(fields: [paymentTxId], references: [id], onDelete: Cascade)
   supplier    Supplier            @relation(fields: [supplierId], references: [id])
+  purchase    Purchase            @relation(fields: [purchaseId], references: [id])
 
   @@index([licenseId, supplierId])
   @@index([licenseId, purchaseId])
 }
 
 model Customer {
-  id             String                @id @default(uuid())
-  licenseId      String
-  code           String?
-  codeNumber     Int?
-  name           String
-  phone          String?
-  email          String?
-  gstin          String?
-  category       String?
-  addressLine1   String?
-  addressLine2   String?
-  city           String?
-  state          String?
-  pincode        String?
-  openingBalance Decimal               @default(0) @db.Decimal(12, 2)
-  notes          String?
-  createdAt      DateTime?
-  updatedAt      DateTime?
-  deletedAt      DateTime?
-  isSynced       Boolean               @default(false)
-  syncedAt       DateTime?
-  license        License               @relation(fields: [licenseId], references: [id])
-  transactions   CustomerTransaction[]
-  sales          Sale[]
+  id                      String                   @id @default(uuid())
+  licenseId               String
+  code                    String?
+  codeNumber              Int?
+  name                    String
+  phone                   String?
+  email                   String?
+  gstin                   String?
+  category                String?
+  addressLine1            String?
+  addressLine2            String?
+  city                    String?
+  state                   String?
+  pincode                 String?
+  openingBalance          Decimal                  @default(0) @db.Decimal(12, 2)
+  notes                   String?
+  createdAt               DateTime?
+  updatedAt               DateTime?
+  deletedAt               DateTime?
+  isSynced                Boolean                  @default(false)
+  syncedAt                DateTime?
+  license                 License                  @relation(fields: [licenseId], references: [id])
+  transactions            CustomerTransaction[]
+  sales                   Sale[]
+  customerBillSettlements CustomerBillSettlement[]
 
   @@unique([licenseId, code])
   @@unique([licenseId, codeNumber])
@@ -630,25 +648,46 @@ model Customer {
 }
 
 model CustomerTransaction {
-  id         String         @id @default(uuid())
-  licenseId  String
-  customerId String
-  kind       CustomerTxKind
-  refId      String?
-  refNo      String?
-  date       DateTime
-  amount     Decimal        @db.Decimal(12, 2)
-  sign       Int
-  notes      String?
-  createdAt  DateTime?
-  updatedAt  DateTime?
-  deletedAt  DateTime?
-  isSynced   Boolean        @default(false)
-  syncedAt   DateTime?
-  customer   Customer       @relation(fields: [customerId], references: [id])
+  id                  String                   @id @default(uuid())
+  licenseId           String
+  customerId          String
+  kind                CustomerTxKind
+  refId               String?
+  refNo               String?
+  date                DateTime
+  amount              Decimal                  @db.Decimal(12, 2)
+  sign                Int
+  notes               String?
+  createdAt           DateTime?
+  updatedAt           DateTime?
+  deletedAt           DateTime?
+  isSynced            Boolean                  @default(false)
+  syncedAt            DateTime?
+  customer            Customer                 @relation(fields: [customerId], references: [id])
+  settlements         CustomerBillSettlement[]
+  paymentStatus       String?
+  chequeNo            String?
+  chequeIssueDate     DateTime?
+  chequeClearanceDate DateTime?
 
   @@index([licenseId, customerId, date])
   @@index([isSynced])
+}
+
+model CustomerBillSettlement {
+  id          String              @id @default(uuid())
+  licenseId   String
+  customerId  String
+  receiptTxId String
+  saleId      String
+  amount      Decimal             @db.Decimal(12, 2)
+  createdAt   DateTime?
+  receiptTx   CustomerTransaction @relation(fields: [receiptTxId], references: [id], onDelete: Cascade)
+  customer    Customer            @relation(fields: [customerId], references: [id])
+  sale        Sale                @relation(fields: [saleId], references: [id])
+
+  @@index([licenseId, customerId])
+  @@index([licenseId, saleId])
 }
 
 model CashTransaction {
@@ -955,6 +994,31 @@ model UnitMaster {
   @@index([licenseId, deletedAt])
   @@index([licenseId, updatedAt])
   @@map("units")
+}
+
+model TransactionType {
+  id        String    @id @default(uuid())
+  licenseId String
+  name      String
+  code      String? // optional short code, e.g. "B2B", "B2C"
+  category  String // 'sale', 'purchase', 'saleReturn', 'purchaseReturn'
+  isDefault Boolean   @default(false)
+  sortOrder Int       @default(999)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  isSynced  Boolean   @default(false)
+  syncedAt  DateTime?
+
+  license         License          @relation(fields: [licenseId], references: [id])
+  purchases       Purchase[]
+  sales           Sale[]
+  purchaseReturns PurchaseReturn[]
+  saleReturns     SaleReturn[]
+
+  @@unique([licenseId, category, name])
+  @@index([licenseId, category])
+  @@index([isSynced])
 }
 
 enum Role {

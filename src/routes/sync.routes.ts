@@ -20,6 +20,10 @@ const ALLOWED_ENTITIES: SyncableModel[] = [
   "unit",
   "saleHold",
   "purchaseHold",
+  "transactionType",
+  "purchaseReturn",
+  "purchaseReturnItem",
+  "purchaseReturnHold",
 ];
 
 router.post(

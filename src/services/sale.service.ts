@@ -70,6 +70,7 @@ export interface SaleCreateInput {
   saleDate?: string | Date;
   entryTime?: string | Date | null;
   discount?: number;
+  typeId?: string | null;
 }
 
 export interface SaleItemInput {
@@ -139,6 +140,7 @@ export async function createSale(
         createdAt: now,
         updatedAt: now,
         isSynced: false,
+        typeId: sale.typeId ?? null,
       },
     });
 
@@ -521,6 +523,7 @@ export async function updateSale(
         saleType: header.saleType ?? (existing.saleType as any),
         updatedAt: now,
         isSynced: false,
+        typeId: header.typeId ?? null,
       },
     });
 
@@ -692,6 +695,7 @@ export async function listSales(
         isSynced: true,
         deletedAt: true,
         syncedAt: true,
+        typeId: true,
       },
     }),
   ]);

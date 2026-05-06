@@ -17,7 +17,13 @@ export type SyncableModel =
   | "shopSettings"
   | "unit"
   | "saleHold"
-  | "purchaseHold"; // ← added
+  | "purchaseHold"
+  | "transactionType"
+  | "purchaseReturn" // ← added
+  | "purchaseReturnItem" // ← added
+  | "purchaseReturnHold" // ← added
+  | "saleReturn" // ← added
+  | "saleReturnItem"; // ← added
 
 // ── Field allow-lists ─────────────────────────────────────────────────────────
 
@@ -260,8 +266,148 @@ const SALE_HOLD_FIELDS = [
   "syncedAt",
 ];
 
-// ← added
 const PURCHASE_HOLD_FIELDS = [
+  "licenseId",
+  "userId",
+  "holdNo",
+  "title",
+  "headerJson",
+  "rowsJson",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+const TRANSACTION_TYPE_FIELDS = [
+  "licenseId",
+  "name",
+  "code",
+  "category",
+  "isDefault",
+  "sortOrder",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+// ← added
+const PURCHASE_RETURN_FIELDS = [
+  "slNo",
+  "billNo",
+  "userId",
+  "licenseId",
+  "supplierId",
+  "supplierName",
+  "department",
+  "debitAccount",
+  "natureOfEntry",
+  "purchaseType",
+  "returnDate",
+  "entryTime",
+  "totalAmount",
+  "discount",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+// ← added
+const PURCHASE_RETURN_ITEM_FIELDS = [
+  "returnId",
+  "productId",
+  "barcode",
+  "quantity",
+  "unit",
+  "rate",
+  "mrp",
+  "taxPercent",
+  "taxAmount",
+  "discount",
+  "discountType",
+  "salePrice",
+  "profit",
+  "totalCost",
+  "billedValue",
+  "effectiveUnitValue",
+  "batchNo",
+  "batchId",
+  "mfgDate",
+  "expiryDate",
+  "lineNo",
+  "appliedQuantity",
+  "overReturnQuantity",
+  "overReturnReason",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+// ← added
+const SALE_RETURN_FIELDS = [
+  "slNo",
+  "billNo",
+  "userId",
+  "licenseId",
+  "customerId",
+  "customerName",
+  "department",
+  "debitAccount",
+  "natureOfEntry",
+  "saleType",
+  "returnDate",
+  "entryTime",
+  "totalAmount",
+  "discount",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+// ← added
+const SALE_RETURN_ITEM_FIELDS = [
+  "returnId",
+  "productId",
+  "barcode",
+  "quantity",
+  "unit",
+  "rate",
+  "mrp",
+  "taxPercent",
+  "taxAmount",
+  "discount",
+  "discountType",
+  "salePrice",
+  "profit",
+  "totalCost",
+  "billedValue",
+  "effectiveUnitValue",
+  "batchNo",
+  "batchId",
+  "mfgDate",
+  "expiryDate",
+  "lineNo",
+  "appliedQuantity",
+  "overReturnQuantity",
+  "overReturnReason",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+// ← added
+const PURCHASE_RETURN_HOLD_FIELDS = [
   "licenseId",
   "userId",
   "holdNo",
@@ -290,7 +436,13 @@ const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   sale: SALE_FIELDS,
   saleItem: SALE_ITEM_FIELDS,
   saleHold: SALE_HOLD_FIELDS,
-  purchaseHold: PURCHASE_HOLD_FIELDS, // ← added
+  purchaseHold: PURCHASE_HOLD_FIELDS,
+  transactionType: TRANSACTION_TYPE_FIELDS,
+  purchaseReturn: PURCHASE_RETURN_FIELDS, // ← added
+  purchaseReturnItem: PURCHASE_RETURN_ITEM_FIELDS, // ← added
+  purchaseReturnHold: PURCHASE_RETURN_HOLD_FIELDS, // ← added
+  saleReturn: SALE_RETURN_FIELDS, // ← added
+  saleReturnItem: SALE_RETURN_ITEM_FIELDS, // ← added
 };
 
 const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
@@ -298,14 +450,24 @@ const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   unit: ["isDefault"],
   purchaseItem: ["isFree"],
   saleItem: ["isFree"],
+  transactionType: ["isDefault"],
 };
 
 const COMPOSITE_CODE_ENTITIES: SyncableModel[] = ["unit", "taxCategory"];
-const COMPOSITE_HOLD_ENTITIES: SyncableModel[] = ["saleHold", "purchaseHold"]; // ← added purchaseHold
+const COMPOSITE_HOLD_ENTITIES: SyncableModel[] = [
+  "saleHold",
+  "purchaseHold",
+  "purchaseReturnHold", // ← added
+];
 
 // Entities where the Prisma model has no licenseId column — can't use generic
 // licenseId-based select or FK guard
-const NO_LICENSE_ID_ENTITIES: SyncableModel[] = ["purchaseItem", "saleItem"];
+const NO_LICENSE_ID_ENTITIES: SyncableModel[] = [
+  "purchaseItem",
+  "saleItem",
+  "purchaseReturnItem", // ← added
+  "saleReturnItem", // ← added
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -335,6 +497,10 @@ function getDelegate(tx: any, entity: SyncableModel) {
   return delegate;
 }
 
+function isHoldEntity(entity: SyncableModel): boolean {
+  return COMPOSITE_HOLD_ENTITIES.includes(entity);
+}
+
 function getUpsertWhere(
   entity: SyncableModel,
   data: any,
@@ -344,8 +510,7 @@ function getUpsertWhere(
   if (COMPOSITE_CODE_ENTITIES.includes(entity)) {
     return { licenseId_code: { licenseId: data.licenseId, code: data.code } };
   }
-  if (entity === "saleHold" || entity === "purchaseHold") {
-    // ← added purchaseHold
+  if (isHoldEntity(entity)) {
     return {
       licenseId_holdNo: { licenseId: data.licenseId, holdNo: data.holdNo },
     };
@@ -379,6 +544,8 @@ export async function handlePush(
   const isComposite = COMPOSITE_CODE_ENTITIES.includes(entity);
   const isPurchaseItem = entity === "purchaseItem";
   const isSaleItem = entity === "saleItem";
+  const isPurchaseReturnItem = entity === "purchaseReturnItem"; // ← added
+  const isSaleReturnItem = entity === "saleReturnItem"; // ← added
   const noLicenseId = NO_LICENSE_ID_ENTITIES.includes(entity);
   const results: PushResult[] = [];
   const prismaModelName = getPrismaModelName(entity);
@@ -397,7 +564,6 @@ export async function handlePush(
 
     validRecords = records.filter((r) => {
       if (!validPurchaseIds.has(r.purchaseId)) {
-        // Parent not synced yet — return not-accepted so client retries
         results.push({ id: r.id, accepted: false, serverUpdatedAt: serverNow });
         return false;
       }
@@ -423,6 +589,46 @@ export async function handlePush(
     });
   }
 
+  // ← added: purchaseReturnItem: skip records whose parent purchaseReturn doesn't exist yet
+  if (isPurchaseReturnItem) {
+    const returnIds = [
+      ...new Set(records.map((r) => r.returnId).filter(Boolean)),
+    ];
+    const existingReturns = await prisma.purchaseReturn.findMany({
+      where: { id: { in: returnIds }, licenseId },
+      select: { id: true },
+    });
+    const validReturnIds = new Set(existingReturns.map((r) => r.id));
+
+    validRecords = validRecords.filter((r) => {
+      if (!validReturnIds.has(r.returnId)) {
+        results.push({ id: r.id, accepted: false, serverUpdatedAt: serverNow });
+        return false;
+      }
+      return true;
+    });
+  }
+
+  // ← added: saleReturnItem: skip records whose parent saleReturn doesn't exist yet
+  if (isSaleReturnItem) {
+    const returnIds = [
+      ...new Set(records.map((r) => r.returnId).filter(Boolean)),
+    ];
+    const existingReturns = await prisma.saleReturn.findMany({
+      where: { id: { in: returnIds }, licenseId },
+      select: { id: true },
+    });
+    const validReturnIds = new Set(existingReturns.map((r) => r.id));
+
+    validRecords = validRecords.filter((r) => {
+      if (!validReturnIds.has(r.returnId)) {
+        results.push({ id: r.id, accepted: false, serverUpdatedAt: serverNow });
+        return false;
+      }
+      return true;
+    });
+  }
+
   if (validRecords.length === 0) return results;
 
   // ── Pre-fetch existing records ────────────────────────────────────────────
@@ -434,49 +640,38 @@ export async function handlePush(
       select: { licenseId: true, updatedAt: true },
     });
     if (existing) existingMap.set(licenseId, existing);
-  } else if (
-    isComposite ||
-    entity === "saleHold" ||
-    entity === "purchaseHold"
-  ) {
-    // ← added purchaseHold
+  } else if (isComposite || isHoldEntity(entity)) {
     // Use holdNo for hold entities, code for composite code entities
-    const keys =
-      entity === "saleHold" || entity === "purchaseHold"
-        ? validRecords.map((r) => r.holdNo)
-        : validRecords.map((r) => r.code).filter(Boolean);
+    const keys = isHoldEntity(entity)
+      ? validRecords.map((r) => r.holdNo)
+      : validRecords.map((r) => r.code).filter(Boolean);
 
-    const existing =
-      entity === "saleHold" || entity === "purchaseHold"
-        ? await (prisma as any)[prismaModelName].findMany({
-            where: { licenseId, holdNo: { in: keys } },
-            select: {
-              id: true,
-              updatedAt: true,
-              licenseId: true,
-              holdNo: true,
-            },
-          })
-        : await (prisma as any)[prismaModelName].findMany({
-            where: { licenseId, code: { in: keys } },
-            select: { id: true, updatedAt: true, licenseId: true, code: true },
-          });
+    const existing = isHoldEntity(entity)
+      ? await (prisma as any)[prismaModelName].findMany({
+          where: { licenseId, holdNo: { in: keys } },
+          select: {
+            id: true,
+            updatedAt: true,
+            licenseId: true,
+            holdNo: true,
+          },
+        })
+      : await (prisma as any)[prismaModelName].findMany({
+          where: { licenseId, code: { in: keys } },
+          select: { id: true, updatedAt: true, licenseId: true, code: true },
+        });
 
-    const byKey =
-      entity === "saleHold" || entity === "purchaseHold"
-        ? new Map(existing.map((r: any) => [r.holdNo, r]))
-        : new Map(existing.map((r: any) => [r.code, r]));
+    const byKey = isHoldEntity(entity)
+      ? new Map(existing.map((r: any) => [r.holdNo, r]))
+      : new Map(existing.map((r: any) => [r.code, r]));
 
     for (const record of validRecords) {
-      const lookupKey =
-        entity === "saleHold" || entity === "purchaseHold"
-          ? record.holdNo
-          : record.code;
+      const lookupKey = isHoldEntity(entity) ? record.holdNo : record.code;
       const found = byKey.get(lookupKey);
       if (found) existingMap.set(record.id, found);
     }
   } else if (noLicenseId) {
-    // PurchaseItem/SaleItem have no licenseId column — select only id + updatedAt
+    // PurchaseItem/SaleItem/PurchaseReturnItem have no licenseId column
     const existing = await (prisma as any)[prismaModelName].findMany({
       where: { id: { in: validRecords.map((r) => r.id) } },
       select: { id: true, updatedAt: true },
@@ -701,11 +896,99 @@ export async function handlePull(
     return { records, hasMore, pulledAt };
   }
 
-  // ← added purchaseHold pull handler
   if (entity === "purchaseHold") {
     const where: any = { licenseId };
     if (since) where.updatedAt = { gt: new Date(since) };
     const records = await prisma.purchaseHold.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  if (entity === "transactionType") {
+    const where: any = { licenseId };
+    if (since) where.updatedAt = { gt: new Date(since) };
+    const records = await prisma.transactionType.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  // ← added
+  if (entity === "purchaseReturn") {
+    const where: any = { licenseId };
+    if (since) where.updatedAt = { gt: new Date(since) };
+    const records = await prisma.purchaseReturn.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  // ← added
+  if (entity === "purchaseReturnItem") {
+    // purchaseReturnItem has no licenseId — scope through parent purchaseReturn
+    const where: any = {
+      purchaseReturn: { licenseId },
+      ...(since ? { updatedAt: { gt: new Date(since) } } : {}),
+    };
+    const records = await prisma.purchaseReturnItem.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  // ← added
+  if (entity === "saleReturn") {
+    const where: any = { licenseId };
+    if (since) where.updatedAt = { gt: new Date(since) };
+    const records = await prisma.saleReturn.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  // ← added
+  if (entity === "saleReturnItem") {
+    // saleReturnItem has no licenseId — scope through parent saleReturn
+    const where: any = {
+      saleReturn: { licenseId },
+      ...(since ? { updatedAt: { gt: new Date(since) } } : {}),
+    };
+    const records = await prisma.saleReturnItem.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  // ← added
+  if (entity === "purchaseReturnHold") {
+    const where: any = { licenseId };
+    if (since) where.updatedAt = { gt: new Date(since) };
+    const records = await prisma.purchaseReturnHold.findMany({
       where,
       orderBy: { updatedAt: "asc" },
       take: limit + 1,
