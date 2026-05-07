@@ -18,10 +18,11 @@ model User {
   licenseId String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
-  purchases Purchase[]
-  sales     Sale[]
-  sessions  Session[]
-  license   License?   @relation(fields: [licenseId], references: [id])
+  purchases   Purchase[]
+  sales       Sale[]
+  quotations  Quotation[]
+  sessions    Session[]
+  license     License?   @relation(fields: [licenseId], references: [id])
 }
 
 model License {
@@ -50,6 +51,7 @@ model License {
   purchaseReturns    PurchaseReturn[]
   sales              Sale[]
   saleReturns        SaleReturn[]
+  quotations         Quotation[]
   suppliers          Supplier[]
   users              User[]
   transactionTypes   TransactionType[]
@@ -122,6 +124,7 @@ model Product {
   batches             ProductBatch[]
   purchaseItems       PurchaseItem[]
   saleItems           SaleItem[]
+  quotationItems      QuotationItem[]
   purchaseReturnItems PurchaseReturnItem[]
 
   @@unique([licenseId, code])
@@ -528,6 +531,75 @@ model SaleHold {
   @@index([licenseId, createdAt])
 }
 
+model Quotation {
+  id              String         @id @default(uuid())
+  slNo            Int?
+  userId          String?
+  licenseId       String
+  customerId      String?
+  customerName    String?
+  quotationNo     String?
+  department      String?
+  natureOfEntry   String?
+  quotationDate   DateTime       @default(now())
+  entryTime       DateTime?
+  totalAmount     Decimal        @db.Decimal(10, 2)
+  discount        Decimal?       @db.Decimal(10, 2)
+  status          String         @default("DRAFT")
+  notes           String?
+  convertedSaleId String?
+  createdAt       DateTime?
+  updatedAt       DateTime?
+  deletedAt       DateTime?
+  isSynced        Boolean        @default(false)
+  syncedAt        DateTime?
+  customer        Customer?      @relation(fields: [customerId], references: [id])
+  license         License        @relation(fields: [licenseId], references: [id])
+  user            User?          @relation(fields: [userId], references: [id])
+  items           QuotationItem[]
+
+  @@unique([licenseId, slNo])
+  @@index([licenseId, quotationDate])
+  @@index([licenseId, customerId])
+  @@index([licenseId, status])
+  @@index([isSynced])
+}
+
+model QuotationItem {
+  id                 String    @id @default(uuid())
+  quotationId        String
+  productId          String
+  barcode            String?
+  quantity           Int
+  unit               String
+  rate               Decimal   @db.Decimal(10, 2)
+  mrp                Decimal?  @db.Decimal(10, 2)
+  taxPercent         TaxPercent
+  taxAmount          Decimal   @db.Decimal(10, 2)
+  discount           Decimal?  @db.Decimal(10, 2)
+  discountType       String?
+  salePrice          Decimal?  @db.Decimal(10, 2)
+  totalCost          Decimal   @db.Decimal(10, 2)
+  billedValue        Decimal?  @db.Decimal(10, 2)
+  batchNo            String?
+  batchId            String?
+  mfgDate            String?
+  expiryDate         String?
+  lineNo             Int?
+  effectiveUnitValue Decimal?  @db.Decimal(10, 2)
+  createdAt          DateTime?
+  updatedAt          DateTime?
+  deletedAt          DateTime?
+  isSynced           Boolean   @default(false)
+  syncedAt           DateTime?
+  product            Product   @relation(fields: [productId], references: [id])
+  quotation          Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@index([quotationId, lineNo])
+  @@index([batchId])
+  @@index([isSynced])
+}
+
 model Supplier {
   id             String                   @id @default(uuid())
   licenseId      String
@@ -639,6 +711,7 @@ model Customer {
   license                 License                  @relation(fields: [licenseId], references: [id])
   transactions            CustomerTransaction[]
   sales                   Sale[]
+  quotations              Quotation[]
   customerBillSettlements CustomerBillSettlement[]
 
   @@unique([licenseId, code])

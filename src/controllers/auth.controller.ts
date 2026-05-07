@@ -76,7 +76,7 @@ export const login = async (req: Request, res: Response) => {
         role: user.role,
         licenseId: user.licenseId,
         licenseName: user.license?.name,
-        tier: user.license?.tier, // Added tier to response
+        tier: user.license?.tier,
       },
     });
   } catch (err) {

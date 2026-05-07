@@ -18,6 +18,7 @@ import purchaseReturnSyncRouter from "./routes/sync/purchaseReturn.routes";
 import saleReturnRoutes from "./routes/saleReturn.routes";
 import saleReturnSyncRouter from "./routes/sync/saleReturn.routes";
 import customerRoutes from "./routes/customer.routes";
+import quotationRoutes from "./routes/quotation.routes";
 
 const app = express();
 app.use(cors());
@@ -45,5 +46,6 @@ app.use("/api/sales", saleRoutes);
 app.use("/api", supplierLedgerRoutes);
 app.use("/api", customerLedgerRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/quotations", quotationRoutes);
 
 export default app;
