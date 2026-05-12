@@ -39,6 +39,7 @@ export const login = async (req: Request, res: Response) => {
       licenseId: user.licenseId,
       licenseName: user.license?.name,
       tier: user.license?.tier,
+      barcodeEnabled: user.license?.barcodeEnabled ?? true,
     };
 
     const token = jwt.sign(payload, env.JWT_SECRET, { expiresIn: "90d" });
@@ -77,6 +78,7 @@ export const login = async (req: Request, res: Response) => {
         licenseId: user.licenseId,
         licenseName: user.license?.name,
         tier: user.license?.tier,
+        barcodeEnabled: user.license?.barcodeEnabled ?? true,
       },
     });
   } catch (err) {

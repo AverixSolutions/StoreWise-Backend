@@ -39,6 +39,7 @@ model License {
   marginForUs        Decimal            @db.Decimal(10, 2)
   marginForFranchise Decimal            @db.Decimal(10, 2)
   tier               LicenseTier        @default(PRO)
+  barcodeEnabled     Boolean            @default(true)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   categories         Category[]

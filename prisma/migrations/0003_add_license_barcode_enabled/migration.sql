@@ -1,0 +1,1 @@
+ALTER TABLE "License" ADD COLUMN "barcodeEnabled" BOOLEAN NOT NULL DEFAULT true;

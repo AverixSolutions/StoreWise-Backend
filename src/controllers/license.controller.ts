@@ -3,6 +3,12 @@ import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { nanoid } from "nanoid";
 
+function parseBarcodeEnabled(value: unknown, defaultValue = true) {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value === "string") return value.toLowerCase() !== "false";
+  return value !== false;
+}
+
 // CREATE LICENSE
 export const createLicense = async (req: Request, res: Response) => {
   try {
@@ -16,6 +22,7 @@ export const createLicense = async (req: Request, res: Response) => {
       amountPaid,
       saleType = "DIRECT",
       franchiseId,
+      barcodeEnabled = true,
     } = req.body;
 
     if (!customerName || !customerPhone || !amountPaid) {
@@ -78,6 +85,7 @@ export const createLicense = async (req: Request, res: Response) => {
         marginForUs,
         marginForFranchise,
         tier: req.body.tier ?? "PRO",
+        barcodeEnabled: parseBarcodeEnabled(barcodeEnabled),
         roleLimits: {
           create: finalRoleLimits.map((rl: any) => ({
             role: rl.role,
@@ -138,6 +146,7 @@ export const updateLicense = async (req: Request, res: Response) => {
       amountPaid,
       saleType,
       franchiseId,
+      barcodeEnabled,
     } = req.body;
 
     if (saleType === "FRANCHISE") {
@@ -181,6 +190,10 @@ export const updateLicense = async (req: Request, res: Response) => {
         franchiseId: saleType === "FRANCHISE" ? franchiseId : null,
         marginForUs,
         marginForFranchise,
+        barcodeEnabled:
+          barcodeEnabled === undefined
+            ? undefined
+            : parseBarcodeEnabled(barcodeEnabled),
         roleLimits: roleLimits
           ? {
               deleteMany: {},
