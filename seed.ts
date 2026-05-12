@@ -3,6 +3,7 @@ import { prisma } from "./src/lib/prisma";
 import bcrypt from "bcryptjs";
 
 async function main() {
+  // ── Demo license (skip if exists) ────────────────────────────────────────
   const license = await prisma.license.upsert({
     where: { id: "demo-license" },
     update: {},
@@ -55,10 +56,38 @@ async function main() {
     },
   });
 
-  console.log(
-    "✅ Seeded users: admin / manager / staff → licenseId:",
-    license.id,
-  );
+  console.log("✅ Demo users seeded → licenseId:", license.id);
+
+  // ── Grand license (real user) ─────────────────────────────────────────────
+  const grandLicense = await prisma.license.upsert({
+    where: { id: "grand-license" },
+    update: {},
+    create: {
+      id: "grand-license",
+      name: "KYNFLOW Grand",
+      customerName: "Grand Shop",
+      customerPhone: "9999999999",
+      amountPaid: 0,
+      marginForUs: 0,
+      marginForFranchise: 0,
+      activeUntil: new Date("2027-01-01"),
+      tier: "PRO",
+    },
+  });
+
+  const hashedGrand = await bcrypt.hash("grand123", 10);
+  await prisma.user.upsert({
+    where: { userId: "grand" },
+    update: {},
+    create: {
+      userId: "grand",
+      password: hashedGrand,
+      role: "ADMIN",
+      licenseId: grandLicense.id,
+    },
+  });
+
+  console.log("✅ Grand user seeded → licenseId:", grandLicense.id);
 }
 
 main()
