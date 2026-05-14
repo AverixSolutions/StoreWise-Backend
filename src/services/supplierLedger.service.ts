@@ -11,8 +11,20 @@ async function computeOpeningAndBalance(
   dateFrom?: string | null,
   dateTo?: string | null,
 ): Promise<{ openingBalance: number; balance: number }> {
-  // Opening balance sum before dateFrom, excluding pending cheques
-  const whereBefore: any = {
+  const supplier = await prisma.supplier.findFirst({
+    where: {
+      id: supplierId,
+      licenseId,
+      deletedAt: null,
+    },
+    select: {
+      openingBalance: true,
+    },
+  });
+
+  const supplierOpening = Number(supplier?.openingBalance ?? 0);
+
+  const baseWhere: any = {
     licenseId,
     supplierId,
     deletedAt: null,
@@ -27,40 +39,45 @@ async function computeOpeningAndBalance(
       },
     ],
   };
-  if (dateFrom) whereBefore.date = { lt: new Date(dateFrom) };
 
-  const openingSum = await prisma.supplierTransaction.aggregate({
-    where: whereBefore,
-    _sum: { amount: true },
-  });
-  const openingBalance = Number(openingSum._sum.amount ?? 0);
+  async function sumSigned(where: any) {
+    const rows = await prisma.supplierTransaction.findMany({
+      where,
+      select: {
+        amount: true,
+        sign: true,
+      },
+    });
 
-  // Current balance = opening + sum of transactions in filtered range (excluding pending cheques)
+    return rows.reduce((sum, tx) => {
+      return sum + Number(tx.amount || 0) * Number(tx.sign || 0);
+    }, 0);
+  }
+
+  let openingBalance = supplierOpening;
+
+  if (dateFrom) {
+    openingBalance += await sumSigned({
+      ...baseWhere,
+      date: { lt: new Date(dateFrom) },
+    });
+  }
+
+  const rangeDate: any = {};
+  if (dateFrom) rangeDate.gte = new Date(dateFrom);
+  if (dateTo) rangeDate.lt = new Date(dateTo);
+
   const rangeWhere: any = {
-    licenseId,
-    supplierId,
-    deletedAt: null,
-    kind: { in: ["OPENING", "PURCHASE", "PAYMENT", "ADJUSTMENT"] },
-    AND: [
-      {
-        OR: [
-          { kind: { not: "PAYMENT" } },
-          { paymentStatus: "CLEARED" },
-          { paymentStatus: null },
-        ],
-      },
-    ],
+    ...baseWhere,
+    ...(Object.keys(rangeDate).length ? { date: rangeDate } : {}),
   };
-  if (dateFrom) rangeWhere.date = { gte: new Date(dateFrom) };
-  if (dateTo) rangeWhere.date = { lt: new Date(dateTo) };
 
-  const rangeSum = await prisma.supplierTransaction.aggregate({
-    where: rangeWhere,
-    _sum: { amount: true },
-  });
-  const balance = openingBalance + Number(rangeSum._sum.amount ?? 0);
+  const rangeBalance = await sumSigned(rangeWhere);
 
-  return { openingBalance, balance };
+  return {
+    openingBalance,
+    balance: openingBalance + rangeBalance,
+  };
 }
 
 // ─── GET SUPPLIER LEDGER (with cheque fields) ────────────────────────────────
@@ -107,6 +124,7 @@ export async function getSupplierLedger(params: {
         notes: true,
         createdAt: true,
         paymentStatus: true,
+        paymentMode: true,
         chequeNo: true,
         chequeIssueDate: true,
         chequeClearanceDate: true,
@@ -131,7 +149,7 @@ export async function getSupplierLedger(params: {
   };
 }
 
-// ─── GET OUTSTANDING BILLS (unchanged) ───────────────────────────────────────
+// ─── GET OUTSTANDING BILLS ───────────────────────────────────────────────────
 export async function getSupplierOutstandingBills(params: {
   licenseId: string;
   supplierId: string;
@@ -239,7 +257,8 @@ export async function createSupplierPayment(payload: {
   const paymentDate = new Date(date);
   const txId = uuidv4();
   const isCheque = mode === "CHEQUE";
-  const paymentStatus = isCheque ? "PENDING_CHEQUE" : "CLEARED";
+
+  const paymentStatus = isCheque ? "PENDING_CHEQUE" : null;
 
   const allocSum = allocations.reduce((s, a) => s + a.amount, 0);
   if (allocSum > amount)
@@ -275,7 +294,7 @@ export async function createSupplierPayment(payload: {
   }
 
   await prisma.$transaction(async (tx) => {
-    // Supplier transaction (with cheque fields)
+    // ── Supplier transaction — paymentMode now stored as a first-class field ──
     await tx.supplierTransaction.create({
       data: {
         id: txId,
@@ -289,6 +308,7 @@ export async function createSupplierPayment(payload: {
         sign: -1,
         notes: notes || (isCheque ? "Cheque Payment" : "Payment"),
         paymentStatus,
+        paymentMode: mode, // ← ADDED: store mode, stop guessing later
         chequeNo: chequeNo,
         chequeIssueDate: chequeIssueDate ? new Date(chequeIssueDate) : null,
         chequeClearanceDate: chequeClearanceDate
@@ -353,7 +373,6 @@ export async function markChequeReceived(licenseId: string, txId: string) {
 
   const now = new Date();
   await prisma.$transaction(async (prisma) => {
-    // Update status to CLEARED
     await prisma.supplierTransaction.update({
       where: { id: txId },
       data: {
@@ -363,7 +382,6 @@ export async function markChequeReceived(licenseId: string, txId: string) {
       },
     });
 
-    // Insert cash transaction (cheque cleared through bank)
     await prisma.cashTransaction.create({
       data: {
         id: uuidv4(),
@@ -384,7 +402,7 @@ export async function markChequeReceived(licenseId: string, txId: string) {
   return { success: true };
 }
 
-// ─── LIST PAYMENTS (with cheque status and filters) ──────────────────────────
+// ─── LIST PAYMENTS (mode read from DB, with fallback for old records) ─────────
 export async function listPayments(params: {
   licenseId: string;
   supplierId?: string | null;
@@ -452,10 +470,30 @@ export async function listPayments(params: {
           b.purchase?.billNo ??
           (b.purchase?.slNo ? `SL-${b.purchase.slNo}` : ""),
       }));
-      // Determine mode from notes and cheque flag
-      let mode: "CASH" | "BANK" | "CHEQUE" = "CASH";
-      if (r.notes?.includes("Bank")) mode = "BANK";
-      else if (r.chequeNo || r.paymentStatus) mode = "CHEQUE";
+
+      // ── Read mode from DB first; fall back to field-sniffing for old records ──
+      const rawMode = String((r as any).paymentMode || "").toUpperCase();
+
+      let mode: "CASH" | "BANK" | "CHEQUE" =
+        rawMode === "BANK" || rawMode === "CHEQUE" || rawMode === "CASH"
+          ? (rawMode as "CASH" | "BANK" | "CHEQUE")
+          : "CASH";
+
+      // Fallback: old rows written before paymentMode column existed
+      if (!(r as any).paymentMode) {
+        const hasChequeFields = Boolean(
+          r.chequeNo ||
+          r.chequeIssueDate ||
+          r.chequeClearanceDate ||
+          r.paymentStatus === "PENDING_CHEQUE",
+        );
+
+        if (hasChequeFields) {
+          mode = "CHEQUE";
+        } else if (r.notes?.toLowerCase().includes("bank")) {
+          mode = "BANK";
+        }
+      }
 
       const paymentStatus = r.paymentStatus ?? null;
       return {

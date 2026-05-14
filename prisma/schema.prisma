@@ -10,19 +10,19 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(uuid())
-  userId    String     @unique
-  password  String
-  role      Role       @default(USER)
-  isActive  Boolean    @default(true)
-  licenseId String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  purchases   Purchase[]
-  sales       Sale[]
-  quotations  Quotation[]
-  sessions    Session[]
-  license     License?   @relation(fields: [licenseId], references: [id])
+  id         String      @id @default(uuid())
+  userId     String      @unique
+  password   String
+  role       Role        @default(USER)
+  isActive   Boolean     @default(true)
+  licenseId  String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  purchases  Purchase[]
+  sales      Sale[]
+  quotations Quotation[]
+  sessions   Session[]
+  license    License?    @relation(fields: [licenseId], references: [id])
 }
 
 model License {
@@ -218,7 +218,7 @@ model Purchase {
   totalAmount             Decimal                  @db.Decimal(10, 2)
   discount                Decimal?                 @db.Decimal(10, 2)
   createdAt               DateTime                 @default(now())
-  updatedAt               DateTime?
+  updatedAt               DateTime                 @default(now())
   deletedAt               DateTime?
   isSynced                Boolean                  @default(false)
   syncedAt                DateTime?
@@ -260,7 +260,7 @@ model PurchaseItem {
   isFree             Boolean    @default(false)
   effectiveUnitValue Decimal?   @db.Decimal(10, 2)
   createdAt          DateTime?
-  updatedAt          DateTime?
+  updatedAt          DateTime   @default(now())
   deletedAt          DateTime?
   isSynced           Boolean    @default(false)
   syncedAt           DateTime?
@@ -533,7 +533,7 @@ model SaleHold {
 }
 
 model Quotation {
-  id              String         @id @default(uuid())
+  id              String          @id @default(uuid())
   slNo            Int?
   userId          String?
   licenseId       String
@@ -542,21 +542,21 @@ model Quotation {
   quotationNo     String?
   department      String?
   natureOfEntry   String?
-  quotationDate   DateTime       @default(now())
+  quotationDate   DateTime        @default(now())
   entryTime       DateTime?
-  totalAmount     Decimal        @db.Decimal(10, 2)
-  discount        Decimal?       @db.Decimal(10, 2)
-  status          String         @default("DRAFT")
+  totalAmount     Decimal         @db.Decimal(10, 2)
+  discount        Decimal?        @db.Decimal(10, 2)
+  status          String          @default("DRAFT")
   notes           String?
   convertedSaleId String?
   createdAt       DateTime?
   updatedAt       DateTime?
   deletedAt       DateTime?
-  isSynced        Boolean        @default(false)
+  isSynced        Boolean         @default(false)
   syncedAt        DateTime?
-  customer        Customer?      @relation(fields: [customerId], references: [id])
-  license         License        @relation(fields: [licenseId], references: [id])
-  user            User?          @relation(fields: [userId], references: [id])
+  customer        Customer?       @relation(fields: [customerId], references: [id])
+  license         License         @relation(fields: [licenseId], references: [id])
+  user            User?           @relation(fields: [userId], references: [id])
   items           QuotationItem[]
 
   @@unique([licenseId, slNo])
@@ -567,34 +567,34 @@ model Quotation {
 }
 
 model QuotationItem {
-  id                 String    @id @default(uuid())
+  id                 String     @id @default(uuid())
   quotationId        String
   productId          String
   barcode            String?
   quantity           Int
   unit               String
-  rate               Decimal   @db.Decimal(10, 2)
-  mrp                Decimal?  @db.Decimal(10, 2)
+  rate               Decimal    @db.Decimal(10, 2)
+  mrp                Decimal?   @db.Decimal(10, 2)
   taxPercent         TaxPercent
-  taxAmount          Decimal   @db.Decimal(10, 2)
-  discount           Decimal?  @db.Decimal(10, 2)
+  taxAmount          Decimal    @db.Decimal(10, 2)
+  discount           Decimal?   @db.Decimal(10, 2)
   discountType       String?
-  salePrice          Decimal?  @db.Decimal(10, 2)
-  totalCost          Decimal   @db.Decimal(10, 2)
-  billedValue        Decimal?  @db.Decimal(10, 2)
+  salePrice          Decimal?   @db.Decimal(10, 2)
+  totalCost          Decimal    @db.Decimal(10, 2)
+  billedValue        Decimal?   @db.Decimal(10, 2)
   batchNo            String?
   batchId            String?
   mfgDate            String?
   expiryDate         String?
   lineNo             Int?
-  effectiveUnitValue Decimal?  @db.Decimal(10, 2)
+  effectiveUnitValue Decimal?   @db.Decimal(10, 2)
   createdAt          DateTime?
   updatedAt          DateTime?
   deletedAt          DateTime?
-  isSynced           Boolean   @default(false)
+  isSynced           Boolean    @default(false)
   syncedAt           DateTime?
-  product            Product   @relation(fields: [productId], references: [id])
-  quotation          Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product            Product    @relation(fields: [productId], references: [id])
+  quotation          Quotation  @relation(fields: [quotationId], references: [id], onDelete: Cascade)
 
   @@index([quotationId, lineNo])
   @@index([batchId])
@@ -660,6 +660,7 @@ model SupplierTransaction {
   isSynced            Boolean                  @default(false)
   syncedAt            DateTime?
   paymentStatus       String? // 'PENDING_CHEQUE' or 'CLEARED'
+  paymentMode         String? // 'CASH' | 'BANK' | 'CHEQUE'
   chequeNo            String?
   chequeIssueDate     DateTime?
   chequeClearanceDate DateTime?

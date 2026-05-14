@@ -27,7 +27,6 @@ router.post("/push", async (req: Request, res: Response) => {
 
     try {
       await prisma.$transaction(async (tx) => {
-        // Upsert the transaction
         await tx.supplierTransaction.upsert({
           where: { id: r.id },
           create: {
@@ -42,6 +41,7 @@ router.post("/push", async (req: Request, res: Response) => {
             sign: Number(r.sign),
             notes: r.notes ?? null,
             paymentStatus: r.paymentStatus ?? null,
+            paymentMode: r.paymentMode ?? null, // ← ADDED
             chequeNo: r.chequeNo ?? null,
             chequeIssueDate: r.chequeIssueDate
               ? new Date(r.chequeIssueDate)
@@ -65,6 +65,7 @@ router.post("/push", async (req: Request, res: Response) => {
             sign: Number(r.sign),
             notes: r.notes ?? null,
             paymentStatus: r.paymentStatus ?? null,
+            paymentMode: r.paymentMode ?? null, // ← ADDED
             chequeNo: r.chequeNo ?? null,
             chequeIssueDate: r.chequeIssueDate
               ? new Date(r.chequeIssueDate)
@@ -84,12 +85,11 @@ router.post("/push", async (req: Request, res: Response) => {
           ? r.settlements
           : [];
         for (const s of settlements) {
-          // Check the purchase exists in this license before creating the settlement
           const purchaseExists = await tx.purchase.findFirst({
             where: { id: s.purchaseId, licenseId },
             select: { id: true },
           });
-          if (!purchaseExists) continue; // purchase not synced yet — skip, will retry on next pull
+          if (!purchaseExists) continue; // purchase not synced yet — skip, retry next pull
 
           await tx.supplierBillSettlement.upsert({
             where: { id: s.id },

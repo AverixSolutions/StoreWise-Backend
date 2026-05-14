@@ -703,31 +703,49 @@ export async function handlePush(
       continue;
     }
 
-    const incomingTs = new Date(record.updatedAt).getTime();
-    const existingTs = existing
-      ? new Date(
-          existing.updatedAt instanceof Date
-            ? existing.updatedAt.toISOString()
-            : existing.updatedAt,
-        ).getTime()
-      : 0;
-    const stripped = stripFields(entity, record);
+    const safeUpdatedAt =
+      record.updatedAt && !Number.isNaN(new Date(record.updatedAt).getTime())
+        ? new Date(record.updatedAt).toISOString()
+        : serverNow;
+
+    const safeCreatedAt =
+      record.createdAt && !Number.isNaN(new Date(record.createdAt).getTime())
+        ? new Date(record.createdAt).toISOString()
+        : safeUpdatedAt;
+
+    const incomingTs = new Date(safeUpdatedAt).getTime();
+
+    const existingTs =
+      existing?.updatedAt &&
+      !Number.isNaN(new Date(existing.updatedAt).getTime())
+        ? new Date(existing.updatedAt).getTime()
+        : 0;
+
+    const stripped = stripFields(entity, {
+      ...record,
+      createdAt: safeCreatedAt,
+      updatedAt: safeUpdatedAt,
+      isSynced: true,
+      syncedAt: serverNow,
+    });
 
     if (!existing) {
       if (isShopSettings) {
         toCreate.push({
           licenseId,
           ...stripped,
+          updatedAt: stripped.updatedAt || serverNow,
+          createdAt: stripped.createdAt || serverNow,
           isSynced: true,
           syncedAt: serverNow,
         });
       } else {
-        const { id, ...rest } = record;
+        const { id, ...rest } = stripped;
+
         let createData: any = {
-          id,
-          // Only add licenseId for entities that have it
+          id: record.id,
+          ...rest,
           ...(noLicenseId ? {} : { licenseId }),
-          ...stripFields(entity, rest),
           isSynced: true,
           syncedAt: serverNow,
         };
@@ -772,6 +790,17 @@ export async function handlePush(
   }
 
   // ── Single transaction ────────────────────────────────────────────────────
+
+  // Categories must be created parent-first to avoid FK violations
+  if (entity === "category") {
+    toCreate.sort((a, b) => {
+      const aIsChild = a.parentId ? 1 : 0;
+      const bIsChild = b.parentId ? 1 : 0;
+      if (aIsChild !== bIsChild) return aIsChild - bIsChild;
+      return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+    });
+  }
+
   if (toCreate.length > 0 || toUpdate.length > 0) {
     await prisma.$transaction(async (tx) => {
       const delegate = getDelegate(tx, entity);
