@@ -627,6 +627,37 @@ function stripFields(entity: SyncableModel, data: Record<string, any>) {
   );
 }
 
+function normalizeSyncDateField(
+  value: any,
+  field: string,
+  entity: SyncableModel,
+) {
+  if (value == null || value === "") return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const iso = `${trimmed}${
+      field === "endsAt" ? "T23:59:59.999Z" : "T00:00:00.000Z"
+    }`;
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      throw new Error(
+        `Invalid ISO-8601 datetime for field ${field} on ${entity}: ${value}`,
+      );
+    }
+    return date.toISOString();
+  }
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(
+      `Invalid ISO-8601 datetime for field ${field} on ${entity}: ${value}`,
+    );
+  }
+  return date.toISOString();
+}
+
 function getPrismaModelName(entity: SyncableModel): string {
   if (entity === "unit") return "unitMaster";
   return entity;
@@ -869,14 +900,37 @@ export async function handlePush(
     }
 
     const safeUpdatedAt =
-      record.updatedAt && !Number.isNaN(new Date(record.updatedAt).getTime())
-        ? new Date(record.updatedAt).toISOString()
-        : serverNow;
+      normalizeSyncDateField(
+        record.updatedAt ?? serverNow,
+        "updatedAt",
+        entity,
+      ) || serverNow;
 
     const safeCreatedAt =
-      record.createdAt && !Number.isNaN(new Date(record.createdAt).getTime())
-        ? new Date(record.createdAt).toISOString()
-        : safeUpdatedAt;
+      normalizeSyncDateField(
+        record.createdAt ?? safeUpdatedAt,
+        "createdAt",
+        entity,
+      ) || safeUpdatedAt;
+
+    const safeDeletedAt = normalizeSyncDateField(
+      record.deletedAt,
+      "deletedAt",
+      entity,
+    );
+
+    const safeSyncedAt =
+      normalizeSyncDateField(record.syncedAt, "syncedAt", entity) || serverNow;
+
+    const safeStartsAt =
+      entity === "offer"
+        ? normalizeSyncDateField(record.startsAt, "startsAt", entity)
+        : record.startsAt;
+
+    const safeEndsAt =
+      entity === "offer"
+        ? normalizeSyncDateField(record.endsAt, "endsAt", entity)
+        : record.endsAt;
 
     const incomingTs = new Date(safeUpdatedAt).getTime();
 
@@ -888,10 +942,13 @@ export async function handlePush(
 
     const stripped = stripFields(entity, {
       ...record,
+      startsAt: safeStartsAt,
+      endsAt: safeEndsAt,
       createdAt: safeCreatedAt,
       updatedAt: safeUpdatedAt,
+      deletedAt: safeDeletedAt,
       isSynced: true,
-      syncedAt: serverNow,
+      syncedAt: safeSyncedAt,
     });
 
     if (!existing) {
