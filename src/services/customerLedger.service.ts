@@ -47,6 +47,7 @@ export async function getCustomerLedger(params: {
         notes: true,
         createdAt: true,
         paymentStatus: true,
+        paymentMode: true,
         chequeNo: true,
         chequeIssueDate: true,
         chequeClearanceDate: true,
@@ -204,7 +205,7 @@ export async function createCustomerReceipt(payload: {
   const now = new Date();
   const txId = uuidv4();
   const isCheque = mode === "CHEQUE";
-  const paymentStatus = isCheque ? "PENDING_CHEQUE" : "CLEARED";
+  const paymentStatus = isCheque ? "PENDING_CHEQUE" : null;
   const allocSum = allocations.reduce((s, a) => s + a.amount, 0);
   if (allocSum > amount)
     throw new Error("Allocated amount exceeds receipt amount");
@@ -223,6 +224,7 @@ export async function createCustomerReceipt(payload: {
         sign: -1,
         notes: notes || (isCheque ? "Cheque Receipt" : "Receipt"),
         paymentStatus,
+        paymentMode: mode,
         chequeNo,
         chequeIssueDate: chequeIssueDate ? new Date(chequeIssueDate) : null,
         chequeClearanceDate: chequeClearanceDate
@@ -289,7 +291,13 @@ export async function markCustomerChequeReceived(
   await prisma.$transaction(async (prisma) => {
     await prisma.customerTransaction.update({
       where: { id: txId },
-      data: { paymentStatus: "CLEARED", updatedAt: now, isSynced: false },
+      data: {
+        paymentStatus: "CLEARED",
+        paymentMode: tx.paymentMode ?? "CHEQUE",
+        updatedAt: now,
+        isSynced: false,
+        syncedAt: null,
+      },
     });
     await prisma.cashTransaction.create({
       data: {
@@ -368,9 +376,22 @@ export async function listReceipts(params: {
         },
       });
 
-      let mode: "CASH" | "BANK" | "CHEQUE" = "CASH";
-      if (r.chequeNo || r.paymentStatus) mode = "CHEQUE";
-      else if (r.notes?.includes("Bank")) mode = "BANK";
+      const rawMode = String((r as any).paymentMode || "").toUpperCase();
+      let mode: "CASH" | "BANK" | "CHEQUE" =
+        rawMode === "BANK" || rawMode === "CHEQUE" ? (rawMode as any) : "CASH";
+
+      if (!(r as any).paymentMode) {
+        if (
+          r.chequeNo ||
+          r.chequeIssueDate ||
+          r.chequeClearanceDate ||
+          r.paymentStatus === "PENDING_CHEQUE"
+        ) {
+          mode = "CHEQUE";
+        } else if (r.notes?.toLowerCase().includes("bank")) {
+          mode = "BANK";
+        }
+      }
 
       return {
         id: r.id,
@@ -380,6 +401,7 @@ export async function listReceipts(params: {
         amount: Number(r.amount),
         mode,
         paymentStatus: r.paymentStatus ?? null,
+        paymentMode: mode,
         notes: r.notes,
         allocated,
         unallocated: Math.max(0, Number(r.amount) - allocated),

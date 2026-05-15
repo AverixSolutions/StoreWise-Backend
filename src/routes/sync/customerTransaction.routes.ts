@@ -41,6 +41,7 @@ router.post("/push", async (req: Request, res: Response) => {
             sign: Number(r.sign),
             notes: r.notes ?? null,
             paymentStatus: r.paymentStatus ?? null,
+            paymentMode: r.paymentMode ?? null,
             chequeNo: r.chequeNo ?? null,
             chequeIssueDate: r.chequeIssueDate
               ? new Date(r.chequeIssueDate)
@@ -64,6 +65,7 @@ router.post("/push", async (req: Request, res: Response) => {
             sign: Number(r.sign),
             notes: r.notes ?? null,
             paymentStatus: r.paymentStatus ?? null,
+            paymentMode: r.paymentMode ?? null,
             chequeNo: r.chequeNo ?? null,
             chequeIssueDate: r.chequeIssueDate
               ? new Date(r.chequeIssueDate)

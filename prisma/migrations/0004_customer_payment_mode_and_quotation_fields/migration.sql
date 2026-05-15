@@ -1,0 +1,7 @@
+ALTER TABLE "CustomerTransaction" ADD COLUMN IF NOT EXISTS "paymentMode" TEXT;
+
+ALTER TABLE "Quotation" ADD COLUMN IF NOT EXISTS "debitAccount" TEXT;
+
+ALTER TABLE "QuotationItem" ADD COLUMN IF NOT EXISTS "profit" DECIMAL(10, 2);
+
+ALTER TABLE "QuotationItem" ADD COLUMN IF NOT EXISTS "isFree" BOOLEAN NOT NULL DEFAULT false;

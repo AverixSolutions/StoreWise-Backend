@@ -10,6 +10,7 @@ export type SyncableModel =
   | "purchaseItem"
   | "sale"
   | "saleItem"
+  | "cashTransaction"
   | "customer"
   | "category"
   | "brand"
@@ -23,7 +24,9 @@ export type SyncableModel =
   | "purchaseReturnItem" // ← added
   | "purchaseReturnHold" // ← added
   | "saleReturn" // ← added
-  | "saleReturnItem"; // ← added
+  | "saleReturnItem" // ← added
+  | "quotation"
+  | "quotationItem";
 
 // ── Field allow-lists ─────────────────────────────────────────────────────────
 
@@ -205,6 +208,7 @@ const SALE_FIELDS = [
   "billNo",
   "userId",
   "licenseId",
+  "typeId",
   "customerId",
   "customerName",
   "department",
@@ -356,6 +360,7 @@ const SALE_RETURN_FIELDS = [
   "billNo",
   "userId",
   "licenseId",
+  "typeId",
   "customerId",
   "customerName",
   "department",
@@ -407,6 +412,76 @@ const SALE_RETURN_ITEM_FIELDS = [
 ];
 
 // ← added
+const QUOTATION_FIELDS = [
+  "slNo",
+  "quotationNo",
+  "userId",
+  "licenseId",
+  "customerId",
+  "customerName",
+  "department",
+  "debitAccount",
+  "natureOfEntry",
+  "quotationDate",
+  "entryTime",
+  "totalAmount",
+  "discount",
+  "status",
+  "notes",
+  "convertedSaleId",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+const QUOTATION_ITEM_FIELDS = [
+  "quotationId",
+  "productId",
+  "barcode",
+  "quantity",
+  "unit",
+  "rate",
+  "mrp",
+  "taxPercent",
+  "taxAmount",
+  "discount",
+  "discountType",
+  "salePrice",
+  "profit",
+  "totalCost",
+  "billedValue",
+  "effectiveUnitValue",
+  "batchNo",
+  "batchId",
+  "mfgDate",
+  "expiryDate",
+  "lineNo",
+  "isFree",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+const CASH_TRANSACTION_FIELDS = [
+  "licenseId",
+  "kind",
+  "refId",
+  "refNo",
+  "date",
+  "amount",
+  "sign",
+  "notes",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
 const PURCHASE_RETURN_HOLD_FIELDS = [
   "licenseId",
   "userId",
@@ -443,6 +518,9 @@ const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   purchaseReturnHold: PURCHASE_RETURN_HOLD_FIELDS, // ← added
   saleReturn: SALE_RETURN_FIELDS, // ← added
   saleReturnItem: SALE_RETURN_ITEM_FIELDS, // ← added
+  quotation: QUOTATION_FIELDS,
+  quotationItem: QUOTATION_ITEM_FIELDS,
+  cashTransaction: CASH_TRANSACTION_FIELDS,
 };
 
 const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
@@ -450,6 +528,7 @@ const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   unit: ["isDefault"],
   purchaseItem: ["isFree"],
   saleItem: ["isFree"],
+  quotationItem: ["isFree"],
   transactionType: ["isDefault"],
 };
 
@@ -465,6 +544,7 @@ const COMPOSITE_HOLD_ENTITIES: SyncableModel[] = [
 const NO_LICENSE_ID_ENTITIES: SyncableModel[] = [
   "purchaseItem",
   "saleItem",
+  "quotationItem",
   "purchaseReturnItem", // ← added
   "saleReturnItem", // ← added
 ];
@@ -546,6 +626,7 @@ export async function handlePush(
   const isSaleItem = entity === "saleItem";
   const isPurchaseReturnItem = entity === "purchaseReturnItem"; // ← added
   const isSaleReturnItem = entity === "saleReturnItem"; // ← added
+  const isQuotationItem = entity === "quotationItem";
   const noLicenseId = NO_LICENSE_ID_ENTITIES.includes(entity);
   const results: PushResult[] = [];
   const prismaModelName = getPrismaModelName(entity);
@@ -622,6 +703,25 @@ export async function handlePush(
 
     validRecords = validRecords.filter((r) => {
       if (!validReturnIds.has(r.returnId)) {
+        results.push({ id: r.id, accepted: false, serverUpdatedAt: serverNow });
+        return false;
+      }
+      return true;
+    });
+  }
+
+  if (isQuotationItem) {
+    const quotationIds = [
+      ...new Set(records.map((r) => r.quotationId).filter(Boolean)),
+    ];
+    const existingQuotations = await prisma.quotation.findMany({
+      where: { id: { in: quotationIds }, licenseId },
+      select: { id: true },
+    });
+    const validQuotationIds = new Set(existingQuotations.map((q) => q.id));
+
+    validRecords = validRecords.filter((r) => {
+      if (!validQuotationIds.has(r.quotationId)) {
         results.push({ id: r.id, accepted: false, serverUpdatedAt: serverNow });
         return false;
       }
@@ -752,7 +852,7 @@ export async function handlePush(
 
         // ✅ Inject cloud user UUID for sale records — overwrites any incoming
         // desktop userId which is not a valid Neon UUID
-        if (entity === "sale" && cloudUserId) {
+        if ((entity === "sale" || entity === "quotation") && cloudUserId) {
           createData.userId = cloudUserId;
         }
 
@@ -767,7 +867,7 @@ export async function handlePush(
       };
 
       // ✅ Also overwrite userId on update to keep cloud UUID consistent
-      if (entity === "sale" && cloudUserId) {
+      if ((entity === "sale" || entity === "quotation") && cloudUserId) {
         updateData.userId = cloudUserId;
       }
 
@@ -1014,6 +1114,34 @@ export async function handlePull(
   }
 
   // ← added
+  if (entity === "quotation") {
+    const where: any = { licenseId };
+    if (since) where.updatedAt = { gt: new Date(since) };
+    const records = await prisma.quotation.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
+  if (entity === "quotationItem") {
+    const where: any = {
+      quotation: { licenseId },
+      ...(since ? { updatedAt: { gt: new Date(since) } } : {}),
+    };
+    const records = await prisma.quotationItem.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      take: limit + 1,
+    });
+    const hasMore = records.length > limit;
+    if (hasMore) records.pop();
+    return { records, hasMore, pulledAt };
+  }
+
   if (entity === "purchaseReturnHold") {
     const where: any = { licenseId };
     if (since) where.updatedAt = { gt: new Date(since) };

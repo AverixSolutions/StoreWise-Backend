@@ -32,6 +32,7 @@ export interface QuotationCreateInput {
   customerId?: string | null;
   customerName?: string | null;
   department?: string | null;
+  debitAccount?: string | null;
   natureOfEntry?: string | null;
   quotationDate?: string | Date;
   entryTime?: string | Date | null;
@@ -53,6 +54,7 @@ export interface QuotationItemInput {
   discount?: number;
   discountType?: "ABS" | "PCT";
   salePrice?: number | null;
+  profit?: number | null;
   totalCost?: number;
   billedValue?: number;
   effectiveUnitValue?: number;
@@ -61,6 +63,7 @@ export interface QuotationItemInput {
   mfgDate?: string | null;
   expiryDate?: string | null;
   lineNo?: number;
+  isFree?: boolean | number;
 }
 
 // ── CREATE ────────────────────────────────────────────────────────────────────
@@ -77,7 +80,7 @@ export async function createQuotation(
   const newId = uuidv4();
   let totalAmount = 0;
 
-  await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const slNo = await getNextQuotationSlNo(tx, licenseId);
     const quotationNo = header.quotationNo || formatQuotationNo(slNo);
 
@@ -98,6 +101,7 @@ export async function createQuotation(
         customerId: validCustomerId,
         customerName: header.customerName ?? null,
         department: header.department ?? null,
+        debitAccount: header.debitAccount ?? null,
         natureOfEntry: header.natureOfEntry ?? null,
         quotationDate,
         entryTime: header.entryTime ? new Date(header.entryTime as string) : now,
@@ -113,20 +117,21 @@ export async function createQuotation(
 
     for (let idx = 0; idx < items.length; idx++) {
       const item = items[idx];
+      const isFree = Boolean(item.isFree);
       const qty = Number(item.quantity || 0);
       const taxPct =
         item.taxPercent === "NT"
           ? 0
           : Number(String(item.taxPercent).replace("P", "")) || 0;
 
-      const taxAmount = item.rate * qty * (taxPct / 100);
-      const totalCost = item.rate * qty + taxAmount;
+      const taxAmount = isFree ? 0 : item.rate * qty * (taxPct / 100);
+      const totalCost = isFree ? 0 : item.rate * qty + taxAmount;
       const discountAbs =
         item.discountType === "PCT"
           ? totalCost * (Math.max(0, Math.min(100, item.discount ?? 0)) / 100)
           : (item.discount ?? 0);
-      const billedValue = Math.max(0, totalCost - discountAbs);
-      const effectiveUnitValue = billedValue / Math.max(1, qty);
+      const billedValue = isFree ? 0 : Math.max(0, totalCost - discountAbs);
+      const effectiveUnitValue = isFree ? 0 : billedValue / Math.max(1, qty);
 
       totalAmount += billedValue;
 
@@ -145,6 +150,7 @@ export async function createQuotation(
           discount: item.discount ?? 0,
           discountType: item.discountType ?? null,
           salePrice: item.salePrice ?? null,
+          profit: item.profit ?? null,
           totalCost,
           billedValue,
           batchNo: item.batchNo ?? null,
@@ -153,6 +159,7 @@ export async function createQuotation(
           expiryDate: item.expiryDate ?? null,
           lineNo: item.lineNo ?? idx + 1,
           effectiveUnitValue,
+          isFree,
           createdAt: now,
           updatedAt: now,
           isSynced: false,
@@ -164,9 +171,11 @@ export async function createQuotation(
       where: { id: newId },
       data: { totalAmount },
     });
+
+    return { slNo, quotationNo, totalAmount };
   });
 
-  return { success: true, id: newId };
+  return { success: true, id: newId, quotationId: newId, ...result };
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────────────
@@ -224,7 +233,11 @@ export async function listQuotations(
         quotationNo: true,
         customerId: true,
         customerName: true,
+        department: true,
+        debitAccount: true,
+        natureOfEntry: true,
         quotationDate: true,
+        entryTime: true,
         totalAmount: true,
         discount: true,
         status: true,
@@ -288,25 +301,26 @@ export async function updateQuotation(
   await prisma.$transaction(async (tx) => {
     await tx.quotationItem.updateMany({
       where: { quotationId: id },
-      data: { deletedAt: now },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
 
     for (let idx = 0; idx < items.length; idx++) {
       const item = items[idx];
+      const isFree = Boolean(item.isFree);
       const qty = Number(item.quantity || 0);
       const taxPct =
         item.taxPercent === "NT"
           ? 0
           : Number(String(item.taxPercent).replace("P", "")) || 0;
 
-      const taxAmount = item.rate * qty * (taxPct / 100);
-      const totalCost = item.rate * qty + taxAmount;
+      const taxAmount = isFree ? 0 : item.rate * qty * (taxPct / 100);
+      const totalCost = isFree ? 0 : item.rate * qty + taxAmount;
       const discountAbs =
         item.discountType === "PCT"
           ? totalCost * (Math.max(0, Math.min(100, item.discount ?? 0)) / 100)
           : (item.discount ?? 0);
-      const billedValue = Math.max(0, totalCost - discountAbs);
-      const effectiveUnitValue = billedValue / Math.max(1, qty);
+      const billedValue = isFree ? 0 : Math.max(0, totalCost - discountAbs);
+      const effectiveUnitValue = isFree ? 0 : billedValue / Math.max(1, qty);
 
       totalAmount += billedValue;
 
@@ -325,6 +339,7 @@ export async function updateQuotation(
           discount: item.discount ?? 0,
           discountType: item.discountType ?? null,
           salePrice: item.salePrice ?? null,
+          profit: item.profit ?? null,
           totalCost,
           billedValue,
           batchNo: item.batchNo ?? null,
@@ -333,6 +348,7 @@ export async function updateQuotation(
           expiryDate: item.expiryDate ?? null,
           lineNo: item.lineNo ?? idx + 1,
           effectiveUnitValue,
+          isFree,
           createdAt: now,
           updatedAt: now,
           isSynced: false,
@@ -356,6 +372,9 @@ export async function updateQuotation(
           : {}),
         ...(header.department !== undefined
           ? { department: header.department }
+          : {}),
+        ...(header.debitAccount !== undefined
+          ? { debitAccount: header.debitAccount }
           : {}),
         ...(header.natureOfEntry !== undefined
           ? { natureOfEntry: header.natureOfEntry }
@@ -383,9 +402,15 @@ export async function deleteQuotation(licenseId: string, id: string) {
   if (!existing) throw new Error("Quotation not found");
 
   const now = new Date();
-  await prisma.quotation.update({
-    where: { id },
-    data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
+  await prisma.$transaction(async (tx) => {
+    await tx.quotation.update({
+      where: { id },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
+    });
+    await tx.quotationItem.updateMany({
+      where: { quotationId: id, deletedAt: null },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
+    });
   });
 
   return { success: true, id, deletedAt: now.toISOString() };
@@ -444,6 +469,7 @@ export async function convertQuotationToSale(
         customerId: validCustomerId,
         customerName: quotation.customerName ?? null,
         department: quotation.department ?? null,
+        debitAccount: quotation.debitAccount ?? null,
         natureOfEntry: quotation.natureOfEntry ?? null,
         saleType,
         saleDate,
@@ -459,9 +485,10 @@ export async function convertQuotationToSale(
     for (let idx = 0; idx < quotation.items.length; idx++) {
       const item = quotation.items[idx];
       const qty = item.quantity;
+      const isFree = Boolean((item as any).isFree);
 
       // Deduct stock
-      if (qty > 0) {
+      if (!isFree && qty > 0) {
         if (item.batchId) {
           const batchRow = await tx.productBatch.findUnique({
             where: { id: item.batchId },
@@ -520,6 +547,7 @@ export async function convertQuotationToSale(
           discount: item.discount ?? 0,
           discountType: item.discountType ?? null,
           salePrice: item.salePrice ?? null,
+          profit: (item as any).profit ?? null,
           totalCost: item.totalCost,
           billedValue: item.billedValue ?? null,
           batchNo: item.batchNo ?? null,
@@ -527,6 +555,7 @@ export async function convertQuotationToSale(
           mfgDate: item.mfgDate ?? null,
           expiryDate: item.expiryDate ?? null,
           lineNo: item.lineNo ?? idx + 1,
+          isFree,
           effectiveUnitValue: item.effectiveUnitValue ?? null,
           createdAt: now,
           updatedAt: now,
@@ -536,6 +565,11 @@ export async function convertQuotationToSale(
     }
 
     // Customer ledger entry for CREDIT sales
+    const grandAmount = Math.max(
+      0,
+      Number(quotation.totalAmount) - Number(quotation.discount ?? 0),
+    );
+
     if (saleType === "CREDIT" && validCustomerId) {
       await tx.customerTransaction.create({
         data: {
@@ -546,9 +580,28 @@ export async function convertQuotationToSale(
           refId: saleId,
           refNo: String(saleSlNo),
           date: saleDate,
-          amount: quotation.totalAmount,
+          amount: grandAmount,
           sign: 1,
           notes: `Converted from quotation ${quotation.quotationNo}`,
+          createdAt: now,
+          updatedAt: now,
+          isSynced: false,
+        },
+      });
+    }
+
+    if (saleType === "CASH") {
+      await tx.cashTransaction.create({
+        data: {
+          id: uuidv4(),
+          licenseId,
+          kind: "SALE",
+          refId: saleId,
+          refNo: overrides.billNo ?? String(saleSlNo),
+          date: saleDate,
+          amount: grandAmount,
+          sign: 1,
+          notes: `Sale (Cash, from quotation ${quotation.quotationNo})`,
           createdAt: now,
           updatedAt: now,
           isSynced: false,

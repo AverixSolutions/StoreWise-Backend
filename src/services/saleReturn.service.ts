@@ -402,8 +402,11 @@ export async function updateSaleReturn(
       }
     }
 
-    // Delete old items
-    await tx.saleReturnItem.deleteMany({ where: { returnId: id } });
+    // Tombstone old items so sync can propagate removals.
+    await tx.saleReturnItem.updateMany({
+      where: { returnId: id, deletedAt: null },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
+    });
 
     // Validate customer
     let validCustomerId: string | null = null;
@@ -526,11 +529,13 @@ export async function updateSaleReturn(
     });
 
     // Delete old ledger entries
-    await tx.customerTransaction.deleteMany({
+    await tx.customerTransaction.updateMany({
       where: { licenseId, kind: "RETURN", refId: id },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
-    await tx.cashTransaction.deleteMany({
+    await tx.cashTransaction.updateMany({
       where: { licenseId, kind: "PAYMENT", refId: id },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
 
     // Recreate ledger
@@ -606,19 +611,21 @@ export async function deleteSaleReturn(licenseId: string, id: string) {
     // Soft-delete
     await tx.saleReturn.update({
       where: { id },
-      data: { deletedAt: now, updatedAt: now, isSynced: false },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
     await tx.saleReturnItem.updateMany({
       where: { returnId: id },
-      data: { deletedAt: now, updatedAt: now, isSynced: false },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
 
     // Delete ledger
-    await tx.customerTransaction.deleteMany({
+    await tx.customerTransaction.updateMany({
       where: { licenseId, kind: "RETURN", refId: id },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
-    await tx.cashTransaction.deleteMany({
+    await tx.cashTransaction.updateMany({
       where: { licenseId, kind: "PAYMENT", refId: id },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
   });
 

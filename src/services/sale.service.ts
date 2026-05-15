@@ -366,8 +366,11 @@ export async function updateSale(
       }
     }
 
-    // Delete old items
-    await tx.saleItem.deleteMany({ where: { saleId: id } });
+    // Tombstone old items so sync can propagate removals.
+    await tx.saleItem.updateMany({
+      where: { saleId: id, deletedAt: null },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
+    });
 
     // Validate customer
     let validCustomerId: string | null = null;
@@ -528,11 +531,13 @@ export async function updateSale(
     });
 
     // Rebuild ledger
-    await tx.customerTransaction.deleteMany({
+    await tx.customerTransaction.updateMany({
       where: { licenseId, kind: "SALE", refId: id },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
-    await tx.cashTransaction.deleteMany({
+    await tx.cashTransaction.updateMany({
       where: { licenseId, kind: "SALE", refId: id },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
 
     const saleType = header.saleType ?? existing.saleType;
@@ -618,18 +623,20 @@ export async function deleteSale(licenseId: string, id: string) {
 
     await tx.sale.update({
       where: { id },
-      data: { deletedAt: now, updatedAt: now, isSynced: false },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
     await tx.saleItem.updateMany({
       where: { saleId: id },
-      data: { deletedAt: now, updatedAt: now, isSynced: false },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
 
-    await tx.customerTransaction.deleteMany({
+    await tx.customerTransaction.updateMany({
       where: { licenseId, kind: "SALE", refId: id },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
-    await tx.cashTransaction.deleteMany({
+    await tx.cashTransaction.updateMany({
       where: { licenseId, kind: "SALE", refId: id },
+      data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
   });
 

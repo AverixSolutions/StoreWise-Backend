@@ -541,6 +541,7 @@ model Quotation {
   customerName    String?
   quotationNo     String?
   department      String?
+  debitAccount    String?
   natureOfEntry   String?
   quotationDate   DateTime        @default(now())
   entryTime       DateTime?
@@ -580,6 +581,7 @@ model QuotationItem {
   discount           Decimal?   @db.Decimal(10, 2)
   discountType       String?
   salePrice          Decimal?   @db.Decimal(10, 2)
+  profit             Decimal?   @db.Decimal(10, 2)
   totalCost          Decimal    @db.Decimal(10, 2)
   billedValue        Decimal?   @db.Decimal(10, 2)
   batchNo            String?
@@ -588,6 +590,7 @@ model QuotationItem {
   expiryDate         String?
   lineNo             Int?
   effectiveUnitValue Decimal?   @db.Decimal(10, 2)
+  isFree             Boolean    @default(false)
   createdAt          DateTime?
   updatedAt          DateTime?
   deletedAt          DateTime?
@@ -741,6 +744,7 @@ model CustomerTransaction {
   customer            Customer                 @relation(fields: [customerId], references: [id])
   settlements         CustomerBillSettlement[]
   paymentStatus       String?
+  paymentMode         String?
   chequeNo            String?
   chequeIssueDate     DateTime?
   chequeClearanceDate DateTime?

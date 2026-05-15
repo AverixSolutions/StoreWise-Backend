@@ -32,6 +32,7 @@ router.post("/push", async (req: Request, res: Response) => {
           slNo: r.slNo ?? null,
           billNo: r.billNo ?? null,
           userId: r.userId ?? null,
+          typeId: r.typeId ?? null,
           customerId: r.customerId ?? null,
           customerName: r.customerName ?? null,
           department: r.department ?? null,
@@ -51,6 +52,7 @@ router.post("/push", async (req: Request, res: Response) => {
         update: {
           slNo: r.slNo ?? null,
           billNo: r.billNo ?? null,
+          typeId: r.typeId ?? null,
           customerId: r.customerId ?? null,
           customerName: r.customerName ?? null,
           department: r.department ?? null,
