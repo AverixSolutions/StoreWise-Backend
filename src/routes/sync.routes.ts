@@ -28,6 +28,8 @@ const ALLOWED_ENTITIES: SyncableModel[] = [
   "saleReturnItem",
   "quotation",
   "quotationItem",
+  "offer",
+  "offerTargetProduct",
   "cashTransaction",
 ];
 

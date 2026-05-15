@@ -56,6 +56,9 @@ model License {
   suppliers          Supplier[]
   users              User[]
   transactionTypes   TransactionType[]
+  offers             Offer[]
+  offerTargets       OfferTargetProduct[]
+  saleSequences      SaleSequence[]
 }
 
 model Franchise {
@@ -125,6 +128,7 @@ model Product {
   batches             ProductBatch[]
   purchaseItems       PurchaseItem[]
   saleItems           SaleItem[]
+  offerTargets        OfferTargetProduct[]
   quotationItems      QuotationItem[]
   purchaseReturnItems PurchaseReturnItem[]
 
@@ -392,6 +396,9 @@ model Sale {
   entryTime               DateTime?
   totalAmount             Decimal                  @db.Decimal(10, 2)
   discount                Decimal?                 @db.Decimal(10, 2)
+  offerSummaryJson        String?
+  offerSavings            Decimal?                 @db.Decimal(10, 2)
+  offerOverridesJson      String?
   saleType                String?
   createdAt               DateTime?
   updatedAt               DateTime?
@@ -434,6 +441,14 @@ model SaleItem {
   lineNo             Int?
   effectiveUnitValue Decimal?   @db.Decimal(10, 2)
   isFree             Boolean    @default(false)
+  originalRate       Decimal?   @db.Decimal(10, 2)
+  originalSalePrice  Decimal?   @db.Decimal(10, 2)
+  appliedRate        Decimal?   @db.Decimal(10, 2)
+  offerId            String?
+  offerName          String?
+  offerType          String?
+  offerDiscountAmount Decimal?  @db.Decimal(10, 2)
+  offerMeta          String?
   createdAt          DateTime?
   updatedAt          DateTime?
   deletedAt          DateTime?
@@ -445,6 +460,75 @@ model SaleItem {
   @@index([saleId, lineNo])
   @@index([batchId])
   @@index([isSynced])
+}
+
+model Offer {
+  id                String               @id @default(uuid())
+  licenseId         String
+  name              String
+  type              String
+  isActive          Boolean              @default(true)
+  applyScope        String               @default("ALL_PRODUCTS")
+  priority          Int                  @default(0)
+  startsAt          DateTime?
+  endsAt            DateTime?
+  timeStart         String?
+  timeEnd           String?
+  minQty            Decimal?             @db.Decimal(10, 2)
+  maxQty            Decimal?             @db.Decimal(10, 2)
+  fixedUnitPrice    Decimal?             @db.Decimal(10, 2)
+  discountPercent   Decimal?             @db.Decimal(10, 2)
+  discountAmount    Decimal?             @db.Decimal(10, 2)
+  triggerKind       String?
+  triggerScope      String?
+  minAmount         Decimal?             @db.Decimal(10, 2)
+  maxAmount         Decimal?             @db.Decimal(10, 2)
+  unit              String?
+  benefitTarget     String?
+  benefitKind       String?
+  benefitQtyMode    String?
+  fixedBenefitQty   Decimal?             @db.Decimal(10, 2)
+  maxBenefitQty     Decimal?             @db.Decimal(10, 2)
+  maxBenefitAmount  Decimal?             @db.Decimal(10, 2)
+  customerRequired  Boolean              @default(false)
+  oncePerBill       Boolean              @default(true)
+  notes             String?
+  createdAt         DateTime?
+  updatedAt         DateTime?
+  deletedAt         DateTime?
+  isSynced          Boolean              @default(false)
+  syncedAt          DateTime?
+  license           License              @relation(fields: [licenseId], references: [id])
+  targets           OfferTargetProduct[]
+
+  @@index([licenseId, type, isActive])
+  @@index([isSynced])
+}
+
+model OfferTargetProduct {
+  id         String    @id @default(uuid())
+  licenseId  String
+  offerId    String
+  productId  String
+  targetRole String
+  createdAt  DateTime?
+  updatedAt  DateTime?
+  deletedAt  DateTime?
+  isSynced   Boolean   @default(false)
+  syncedAt   DateTime?
+  license    License   @relation(fields: [licenseId], references: [id])
+  offer      Offer     @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  product    Product   @relation(fields: [productId], references: [id])
+
+  @@index([licenseId, offerId])
+  @@index([offerId, targetRole])
+  @@index([isSynced])
+}
+
+model SaleSequence {
+  licenseId String  @id
+  lastSlNo  Int     @default(0)
+  license   License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
 }
 
 model SaleReturn {

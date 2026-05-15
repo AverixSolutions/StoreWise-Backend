@@ -12,11 +12,25 @@ function toTaxPercent(v: string): TaxPercent {
 }
 
 async function getNextSlNo(tx: any, licenseId: string): Promise<number> {
-  const agg = await tx.sale.aggregate({
-    where: { licenseId, deletedAt: null },
+  const existingMax = await tx.sale.aggregate({
+    where: { licenseId },
     _max: { slNo: true },
   });
-  return (agg._max.slNo ?? 0) + 1;
+  const current = await tx.saleSequence.upsert({
+    where: { licenseId },
+    create: { licenseId, lastSlNo: existingMax._max.slNo ?? 0 },
+    update: {},
+  });
+  const next = Number(current.lastSlNo || 0) + 1;
+  await tx.saleSequence.update({
+    where: { licenseId },
+    data: { lastSlNo: next },
+  });
+  return next;
+}
+
+function formatBillNo(slNo: number) {
+  return String(slNo).padStart(5, "0");
 }
 
 async function getNextHoldNo(tx: any, licenseId: string): Promise<number> {
@@ -71,6 +85,9 @@ export interface SaleCreateInput {
   entryTime?: string | Date | null;
   discount?: number;
   typeId?: string | null;
+  offerSummaryJson?: string | null;
+  offerSavings?: number;
+  offerOverridesJson?: string | null;
 }
 
 export interface SaleItemInput {
@@ -95,6 +112,14 @@ export interface SaleItemInput {
   expiryDate?: string | null;
   lineNo?: number;
   isFree?: boolean | number;
+  originalRate?: number | null;
+  originalSalePrice?: number | null;
+  appliedRate?: number | null;
+  offerId?: string | null;
+  offerName?: string | null;
+  offerType?: string | null;
+  offerDiscountAmount?: number;
+  offerMeta?: string | null;
 }
 
 // ── CREATE SALE ───────────────────────────────────────────────────────────────
@@ -111,6 +136,7 @@ export async function createSale(
 
   const result = await prisma.$transaction(async (tx) => {
     const slNo = await getNextSlNo(tx, licenseId);
+    const billNo = formatBillNo(slNo);
 
     // Validate customer exists if CREDIT
     let validCustomerId: string | null = null;
@@ -126,7 +152,7 @@ export async function createSale(
         id: newId,
         slNo,
         licenseId,
-        billNo: sale.billNo ?? null,
+        billNo,
         customerId: validCustomerId,
         customerName: sale.customerName ?? null,
         department: sale.department ?? null,
@@ -137,6 +163,9 @@ export async function createSale(
         entryTime: sale.entryTime ? new Date(sale.entryTime as string) : now,
         totalAmount: 0,
         discount: sale.discount ?? 0,
+        offerSummaryJson: sale.offerSummaryJson ?? null,
+        offerSavings: sale.offerSavings ?? 0,
+        offerOverridesJson: sale.offerOverridesJson ?? null,
         createdAt: now,
         updatedAt: now,
         isSynced: false,
@@ -260,6 +289,14 @@ export async function createSale(
           expiryDate: item.expiryDate ?? null,
           lineNo: item.lineNo ?? idx + 1,
           isFree,
+          originalRate: item.originalRate ?? null,
+          originalSalePrice: item.originalSalePrice ?? null,
+          appliedRate: item.appliedRate ?? null,
+          offerId: item.offerId ?? null,
+          offerName: item.offerName ?? null,
+          offerType: item.offerType ?? null,
+          offerDiscountAmount: item.offerDiscountAmount ?? 0,
+          offerMeta: item.offerMeta ?? null,
           createdAt: now,
           updatedAt: now,
           isSynced: false,
@@ -283,7 +320,7 @@ export async function createSale(
           customerId: validCustomerId,
           kind: "SALE",
           refId: newId,
-          refNo: sale.billNo ?? null,
+          refNo: billNo,
           date: saleDate,
           amount: grandAmount,
           sign: 1,
@@ -303,7 +340,7 @@ export async function createSale(
           licenseId,
           kind: "SALE",
           refId: newId,
-          refNo: sale.billNo ?? null,
+          refNo: billNo,
           date: saleDate,
           amount: grandAmount,
           sign: 1,
@@ -315,7 +352,7 @@ export async function createSale(
       });
     }
 
-    return { saleId: newId, slNo, totalAmount, grandAmount };
+    return { saleId: newId, slNo, billNo, totalAmount, grandAmount };
   });
 
   return { success: true, ...result };
@@ -496,6 +533,14 @@ export async function updateSale(
           expiryDate: item.expiryDate ?? null,
           lineNo: item.lineNo ?? idx + 1,
           isFree,
+          originalRate: item.originalRate ?? null,
+          originalSalePrice: item.originalSalePrice ?? null,
+          appliedRate: item.appliedRate ?? null,
+          offerId: item.offerId ?? null,
+          offerName: item.offerName ?? null,
+          offerType: item.offerType ?? null,
+          offerDiscountAmount: item.offerDiscountAmount ?? 0,
+          offerMeta: item.offerMeta ?? null,
           createdAt: now,
           updatedAt: now,
           isSynced: false,
@@ -522,6 +567,10 @@ export async function updateSale(
           ? new Date(header.entryTime as string)
           : existing.entryTime,
         discount: Number(header.discount ?? existing.discount ?? 0),
+        offerSummaryJson: header.offerSummaryJson ?? existing.offerSummaryJson,
+        offerSavings: Number(header.offerSavings ?? existing.offerSavings ?? 0),
+        offerOverridesJson:
+          header.offerOverridesJson ?? existing.offerOverridesJson,
         totalAmount,
         saleType: header.saleType ?? (existing.saleType as any),
         updatedAt: now,
@@ -698,6 +747,9 @@ export async function listSales(
         entryTime: true,
         totalAmount: true,
         discount: true,
+        offerSummaryJson: true,
+        offerSavings: true,
+        offerOverridesJson: true,
         saleType: true,
         isSynced: true,
         deletedAt: true,
@@ -716,6 +768,7 @@ export async function listSales(
       ...r,
       totalAmount: Number(r.totalAmount),
       discount: Number(r.discount ?? 0),
+      offerSavings: Number(r.offerSavings ?? 0),
     })),
   };
 }
@@ -742,6 +795,7 @@ export async function getSaleFull(licenseId: string, id: string) {
       ...s,
       totalAmount: Number(s.totalAmount),
       discount: Number(s.discount ?? 0),
+      offerSavings: Number(s.offerSavings ?? 0),
     },
     items: s.items.map((it) => ({
       ...it,
@@ -757,6 +811,12 @@ export async function getSaleFull(licenseId: string, id: string) {
       billedValue: it.billedValue != null ? Number(it.billedValue) : null,
       effectiveUnitValue:
         it.effectiveUnitValue != null ? Number(it.effectiveUnitValue) : null,
+      originalRate: it.originalRate != null ? Number(it.originalRate) : null,
+      originalSalePrice:
+        it.originalSalePrice != null ? Number(it.originalSalePrice) : null,
+      appliedRate: it.appliedRate != null ? Number(it.appliedRate) : null,
+      offerDiscountAmount:
+        it.offerDiscountAmount != null ? Number(it.offerDiscountAmount) : 0,
       isFree: it.isFree ? 1 : 0,
     })),
   };
@@ -765,11 +825,15 @@ export async function getSaleFull(licenseId: string, id: string) {
 // ── PEEK NEXT SLNO ────────────────────────────────────────────────────────────
 
 export async function peekNextSlNo(licenseId: string) {
-  const agg = await prisma.sale.aggregate({
-    where: { licenseId, deletedAt: null },
-    _max: { slNo: true },
-  });
-  return { nextSlNo: (agg._max.slNo ?? 0) + 1 };
+  const [agg, seq] = await Promise.all([
+    prisma.sale.aggregate({
+      where: { licenseId },
+      _max: { slNo: true },
+    }),
+    prisma.saleSequence.findUnique({ where: { licenseId } }),
+  ]);
+  const nextSlNo = Math.max(Number(agg._max.slNo ?? 0), seq?.lastSlNo ?? 0) + 1;
+  return { nextSlNo, suggestedBillNo: formatBillNo(nextSlNo) };
 }
 
 // ── HOLDS ─────────────────────────────────────────────────────────────────────

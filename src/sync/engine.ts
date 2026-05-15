@@ -26,7 +26,9 @@ export type SyncableModel =
   | "saleReturn" // ← added
   | "saleReturnItem" // ← added
   | "quotation"
-  | "quotationItem";
+  | "quotationItem"
+  | "offer"
+  | "offerTargetProduct";
 
 // ── Field allow-lists ─────────────────────────────────────────────────────────
 
@@ -219,6 +221,9 @@ const SALE_FIELDS = [
   "entryTime",
   "totalAmount",
   "discount",
+  "offerSummaryJson",
+  "offerSavings",
+  "offerOverridesJson",
   "createdAt",
   "updatedAt",
   "deletedAt",
@@ -249,6 +254,14 @@ const SALE_ITEM_FIELDS = [
   "lineNo",
   "isFree",
   "effectiveUnitValue",
+  "originalRate",
+  "originalSalePrice",
+  "appliedRate",
+  "offerId",
+  "offerName",
+  "offerType",
+  "offerDiscountAmount",
+  "offerMeta",
   "createdAt",
   "updatedAt",
   "deletedAt",
@@ -436,6 +449,55 @@ const QUOTATION_FIELDS = [
   "syncedAt",
 ];
 
+const OFFER_FIELDS = [
+  "licenseId",
+  "name",
+  "type",
+  "isActive",
+  "applyScope",
+  "priority",
+  "startsAt",
+  "endsAt",
+  "timeStart",
+  "timeEnd",
+  "minQty",
+  "maxQty",
+  "fixedUnitPrice",
+  "discountPercent",
+  "discountAmount",
+  "triggerKind",
+  "triggerScope",
+  "minAmount",
+  "maxAmount",
+  "unit",
+  "benefitTarget",
+  "benefitKind",
+  "benefitQtyMode",
+  "fixedBenefitQty",
+  "maxBenefitQty",
+  "maxBenefitAmount",
+  "customerRequired",
+  "oncePerBill",
+  "notes",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
+const OFFER_TARGET_PRODUCT_FIELDS = [
+  "licenseId",
+  "offerId",
+  "productId",
+  "targetRole",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+
 const QUOTATION_ITEM_FIELDS = [
   "quotationId",
   "productId",
@@ -521,6 +583,8 @@ const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   quotation: QUOTATION_FIELDS,
   quotationItem: QUOTATION_ITEM_FIELDS,
   cashTransaction: CASH_TRANSACTION_FIELDS,
+  offer: OFFER_FIELDS,
+  offerTargetProduct: OFFER_TARGET_PRODUCT_FIELDS,
 };
 
 const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
@@ -530,6 +594,7 @@ const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   saleItem: ["isFree"],
   quotationItem: ["isFree"],
   transactionType: ["isDefault"],
+  offer: ["isActive", "customerRequired", "oncePerBill"],
 };
 
 const COMPOSITE_CODE_ENTITIES: SyncableModel[] = ["unit", "taxCategory"];
