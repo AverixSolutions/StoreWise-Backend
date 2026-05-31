@@ -7,6 +7,7 @@ const router = Router();
 
 const ALLOWED_ENTITIES: SyncableModel[] = [
   "product",
+  "productBatch",
   "supplier",
   "purchase",
   "purchaseItem",
@@ -33,24 +34,57 @@ const ALLOWED_ENTITIES: SyncableModel[] = [
   "cashTransaction",
 ];
 
+function getRequestLicenseId(req: Request): string | null {
+  return (req as any).user?.licenseId || null;
+}
+
+function rejectIfClientLicenseMismatch(req: Request, trustedLicenseId: string) {
+  const bodyLicenseId = (req.body as any)?.licenseId;
+  const queryLicenseId = req.query?.licenseId;
+  const headerLicenseId = req.header("x-license-id");
+
+  const incomingLicenseId =
+    bodyLicenseId ||
+    (typeof queryLicenseId === "string" ? queryLicenseId : null) ||
+    headerLicenseId ||
+    null;
+
+  if (incomingLicenseId && incomingLicenseId !== trustedLicenseId) {
+    return true;
+  }
+
+  return false;
+}
+
 router.post(
   "/:entity/push",
   verifyToken,
   async (req: Request, res: Response) => {
     const { entity } = req.params;
-    const { licenseId } = req.body;
+    const licenseId = getRequestLicenseId(req);
     const userId = (req as any).user?.id;
 
-    if (!ALLOWED_ENTITIES.includes(entity as SyncableModel))
+    if (!ALLOWED_ENTITIES.includes(entity as SyncableModel)) {
       return res.status(400).json({ error: `Unknown entity: ${entity}` });
-    if (!licenseId || licenseId !== (req as any).user?.licenseId)
+    }
+
+    if (!licenseId) {
+      return res.status(403).json({ error: "Missing license in session" });
+    }
+
+    if (rejectIfClientLicenseMismatch(req, licenseId)) {
       return res.status(403).json({ error: "License mismatch" });
+    }
 
     const records = req.body.records;
-    if (!Array.isArray(records) || records.length === 0)
+
+    if (!Array.isArray(records) || records.length === 0) {
       return res.json({ results: [], pushedAt: new Date().toISOString() });
-    if (records.length > 500)
+    }
+
+    if (records.length > 500) {
       return res.status(400).json({ error: "Max 500 records per push" });
+    }
 
     try {
       const results = await handlePush(
@@ -59,6 +93,7 @@ router.post(
         records,
         userId,
       );
+
       res.json({ results, pushedAt: new Date().toISOString() });
     } catch (err: any) {
       console.error("[sync:push]", entity, err);
@@ -72,12 +107,20 @@ router.get(
   verifyToken,
   async (req: Request, res: Response) => {
     const { entity } = req.params;
-    const { since, licenseId, limit } = req.query as Record<string, string>;
+    const { since, limit } = req.query as Record<string, string>;
+    const licenseId = getRequestLicenseId(req);
 
-    if (!ALLOWED_ENTITIES.includes(entity as SyncableModel))
+    if (!ALLOWED_ENTITIES.includes(entity as SyncableModel)) {
       return res.status(400).json({ error: `Unknown entity: ${entity}` });
-    if (!licenseId || licenseId !== (req as any).user?.licenseId)
+    }
+
+    if (!licenseId) {
+      return res.status(403).json({ error: "Missing license in session" });
+    }
+
+    if (rejectIfClientLicenseMismatch(req, licenseId)) {
       return res.status(403).json({ error: "License mismatch" });
+    }
 
     try {
       const result = await handlePull(
@@ -86,6 +129,7 @@ router.get(
         since || null,
         Number(limit) || 500,
       );
+
       res.json(result);
     } catch (err: any) {
       console.error("[sync:pull]", entity, err);

@@ -5,6 +5,7 @@ const prisma = new PrismaClient();
 
 export type SyncableModel =
   | "product"
+  | "productBatch"
   | "supplier"
   | "purchase"
   | "purchaseItem"
@@ -57,6 +58,25 @@ const PRODUCT_FIELDS = [
   "deletedAt",
   "isSynced",
   "syncedAt",
+];
+const PRODUCT_BATCH_FIELDS = [
+  "licenseId",
+  "productId",
+  "barcode",
+  "mrp",
+  "salePrice",
+  "costPrice",
+  "batchNo",
+  "purchaseBatchNo",
+  "purchaseId",
+  "mfgDate",
+  "expiryDate",
+  "receivedAt",
+  "stock",
+  "isSystemGeneratedBarcode",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
 ];
 const SUPPLIER_FIELDS = [
   "licenseId",
@@ -562,6 +582,7 @@ const PURCHASE_RETURN_HOLD_FIELDS = [
 
 const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   product: PRODUCT_FIELDS,
+  productBatch: PRODUCT_BATCH_FIELDS,
   supplier: SUPPLIER_FIELDS,
   category: CATEGORY_FIELDS,
   brand: BRAND_FIELDS,
@@ -590,6 +611,7 @@ const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
 const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   taxCategory: ["isInterstate"],
   unit: ["isDefault"],
+  productBatch: ["isSystemGeneratedBarcode"],
   purchaseItem: ["isFree"],
   saleItem: ["isFree"],
   quotationItem: ["isFree"],
@@ -610,9 +632,15 @@ const NO_LICENSE_ID_ENTITIES: SyncableModel[] = [
   "purchaseItem",
   "saleItem",
   "quotationItem",
-  "purchaseReturnItem", // ← added
+  "purchaseReturnItem",
   "saleReturnItem", // ← added
 ];
+
+const NO_SYNC_STATUS_ENTITIES: SyncableModel[] = ["productBatch"];
+
+function hasSyncStatusFields(entity: SyncableModel): boolean {
+  return !NO_SYNC_STATUS_ENTITIES.includes(entity);
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -720,10 +748,12 @@ export async function handlePush(
   const isComposite = COMPOSITE_CODE_ENTITIES.includes(entity);
   const isPurchaseItem = entity === "purchaseItem";
   const isSaleItem = entity === "saleItem";
-  const isPurchaseReturnItem = entity === "purchaseReturnItem"; // ← added
-  const isSaleReturnItem = entity === "saleReturnItem"; // ← added
+  const isProductBatch = entity === "productBatch";
+  const isPurchaseReturnItem = entity === "purchaseReturnItem";
+  const isSaleReturnItem = entity === "saleReturnItem";
   const isQuotationItem = entity === "quotationItem";
   const noLicenseId = NO_LICENSE_ID_ENTITIES.includes(entity);
+  const hasSyncStatus = hasSyncStatusFields(entity);
   const results: PushResult[] = [];
   const prismaModelName = getPrismaModelName(entity);
 
@@ -821,6 +851,28 @@ export async function handlePush(
         results.push({ id: r.id, accepted: false, serverUpdatedAt: serverNow });
         return false;
       }
+      return true;
+    });
+  }
+
+  if (isProductBatch) {
+    const productIds = [
+      ...new Set(validRecords.map((r) => r.productId).filter(Boolean)),
+    ];
+
+    const existingProducts = await prisma.product.findMany({
+      where: { id: { in: productIds }, licenseId },
+      select: { id: true },
+    });
+
+    const validProductIds = new Set(existingProducts.map((p) => p.id));
+
+    validRecords = validRecords.filter((r) => {
+      if (!validProductIds.has(r.productId)) {
+        results.push({ id: r.id, accepted: false, serverUpdatedAt: serverNow });
+        return false;
+      }
+
       return true;
     });
   }
@@ -968,8 +1020,7 @@ export async function handlePush(
           id: record.id,
           ...rest,
           ...(noLicenseId ? {} : { licenseId }),
-          isSynced: true,
-          syncedAt: serverNow,
+          ...(hasSyncStatus ? { isSynced: true, syncedAt: serverNow } : {}),
         };
 
         // ✅ Inject cloud user UUID for sale records — overwrites any incoming
@@ -984,8 +1035,7 @@ export async function handlePush(
     } else if (incomingTs > existingTs) {
       let updateData: any = {
         ...stripped,
-        isSynced: true,
-        syncedAt: serverNow,
+        ...(hasSyncStatus ? { isSynced: true, syncedAt: serverNow } : {}),
       };
 
       // ✅ Also overwrite userId on update to keep cloud UUID consistent
