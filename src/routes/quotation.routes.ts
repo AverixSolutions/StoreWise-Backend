@@ -9,6 +9,7 @@ import {
   getQuotationFull,
   peekNextQuotationSlNo,
   convertQuotationToSale,
+  markQuotationConverted,
 } from "../services/quotation.service";
 
 const router = Router();
@@ -115,7 +116,41 @@ router.delete("/:id", async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     const msg = err.message || "Failed";
-    const status = msg.includes("not found") ? 404 : 500;
+    const status = msg.includes("not found")
+      ? 404
+      : msg.includes("converted")
+        ? 400
+        : 500;
+    res.status(status).json({ success: false, error: msg });
+  }
+});
+
+// PATCH /api/quotations/:id/mark-converted
+router.patch("/:id/mark-converted", async (req: Request, res: Response) => {
+  const licenseId = getLicenseId(req);
+  const saleId = String(req.body?.saleId || "");
+  if (!saleId) {
+    return res.status(400).json({ success: false, error: "saleId required" });
+  }
+
+  try {
+    const result = await markQuotationConverted(
+      licenseId,
+      req.params.id,
+      saleId,
+    );
+    res.json(result);
+  } catch (err: any) {
+    const msg = err.message || "Failed";
+    const status =
+      msg.includes("not found")
+        ? 404
+        : msg.includes("expired") ||
+            msg.includes("already converted") ||
+            msg.includes("Only draft or sent") ||
+            msg.includes("state changed")
+          ? 400
+          : 500;
     res.status(status).json({ success: false, error: msg });
   }
 });

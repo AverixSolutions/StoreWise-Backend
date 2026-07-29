@@ -24,6 +24,62 @@ function formatQuotationNo(slNo: number): string {
   return `QT-${String(slNo).padStart(4, "0")}`;
 }
 
+async function attachConvertedSaleDetails<
+  T extends { convertedSaleId?: string | null },
+>(
+  rows: T[],
+  licenseId: string,
+): Promise<
+  Array<
+    T & { convertedSaleBillNo: string | null; convertedSaleSlNo: number | null }
+  >
+> {
+  const saleIds = rows
+    .map((row) => row.convertedSaleId)
+    .filter((id): id is string => Boolean(id));
+
+  if (!saleIds.length) {
+    return rows.map((row) => ({
+      ...row,
+      convertedSaleBillNo: null,
+      convertedSaleSlNo: null,
+    }));
+  }
+
+  const sales = await prisma.sale.findMany({
+    where: {
+      id: { in: saleIds },
+      licenseId,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      billNo: true,
+      slNo: true,
+    },
+  });
+
+  const saleMap = new Map(
+    sales.map((sale) => [
+      sale.id,
+      {
+        billNo: sale.billNo,
+        slNo: sale.slNo,
+      },
+    ]),
+  );
+
+  return rows.map((row) => {
+    const sale = row.convertedSaleId ? saleMap.get(row.convertedSaleId) : null;
+
+    return {
+      ...row,
+      convertedSaleBillNo: sale?.billNo ?? null,
+      convertedSaleSlNo: sale?.slNo ?? null,
+    };
+  });
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface QuotationCreateInput {
@@ -104,7 +160,9 @@ export async function createQuotation(
         debitAccount: header.debitAccount ?? null,
         natureOfEntry: header.natureOfEntry ?? null,
         quotationDate,
-        entryTime: header.entryTime ? new Date(header.entryTime as string) : now,
+        entryTime: header.entryTime
+          ? new Date(header.entryTime as string)
+          : now,
         totalAmount: 0,
         discount: header.discount ?? 0,
         status: header.status ?? "DRAFT",
@@ -250,14 +308,22 @@ export async function listQuotations(
     }),
   ]);
 
-  return { success: true, total, page, pageSize, rows };
+  const enrichedRows = await attachConvertedSaleDetails(rows, licenseId);
+
+  return {
+    success: true,
+    total,
+    page,
+    pageSize,
+    rows: enrichedRows,
+  };
 }
 
 // ── GET FULL ──────────────────────────────────────────────────────────────────
 
 export async function getQuotationFull(licenseId: string, id: string) {
   const quotation = await prisma.quotation.findFirst({
-    where: { id, licenseId },
+    where: { id, licenseId, deletedAt: null },
   });
   if (!quotation) return { success: false, error: "Quotation not found" };
 
@@ -266,7 +332,16 @@ export async function getQuotationFull(licenseId: string, id: string) {
     orderBy: { lineNo: "asc" },
   });
 
-  return { success: true, quotation, items };
+  const [enrichedQuotation] = await attachConvertedSaleDetails(
+    [quotation],
+    licenseId,
+  );
+
+  return {
+    success: true,
+    quotation: enrichedQuotation,
+    items,
+  };
 }
 
 // ── PEEK NEXT SL NO ───────────────────────────────────────────────────────────
@@ -400,6 +475,9 @@ export async function deleteQuotation(licenseId: string, id: string) {
     where: { id, licenseId, deletedAt: null },
   });
   if (!existing) throw new Error("Quotation not found");
+  if (existing.status === "CONVERTED") {
+    throw new Error("Cannot delete a converted quotation");
+  }
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
@@ -418,6 +496,73 @@ export async function deleteQuotation(licenseId: string, id: string) {
 
 // ── CONVERT TO SALE ───────────────────────────────────────────────────────────
 
+export async function markQuotationConverted(
+  licenseId: string,
+  quotationId: string,
+  saleId: string,
+) {
+  if (!saleId) throw new Error("saleId required");
+
+  return prisma.$transaction(async (tx) => {
+    const quotation = await tx.quotation.findFirst({
+      where: { id: quotationId, licenseId, deletedAt: null },
+    });
+    if (!quotation) throw new Error("Quotation not found");
+
+    if (quotation.status === "CONVERTED") {
+      if (quotation.convertedSaleId === saleId) {
+        return { success: true, id: quotationId, convertedSaleId: saleId };
+      }
+      throw new Error("Quotation is already converted to another sale");
+    }
+
+    if (!["DRAFT", "SENT"].includes(quotation.status)) {
+      throw new Error("Only draft or sent quotations can be converted");
+    }
+
+    const sale = await tx.sale.findFirst({
+      where: { id: saleId, licenseId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!sale) throw new Error("Sale not found");
+
+    const now = new Date();
+    const updated = await tx.quotation.updateMany({
+      where: {
+        id: quotationId,
+        licenseId,
+        deletedAt: null,
+        status: quotation.status,
+        convertedSaleId: quotation.convertedSaleId,
+      },
+      data: {
+        status: "CONVERTED",
+        convertedSaleId: saleId,
+        updatedAt: now,
+        isSynced: false,
+        syncedAt: null,
+      },
+    });
+
+    if (updated.count !== 1) {
+      const latest = await tx.quotation.findFirst({
+        where: { id: quotationId, licenseId, deletedAt: null },
+      });
+
+      if (
+        latest?.status === "CONVERTED" &&
+        latest.convertedSaleId === saleId
+      ) {
+        return { success: true, id: quotationId, convertedSaleId: saleId };
+      }
+
+      throw new Error("Quotation conversion state changed; refresh and retry");
+    }
+
+    return { success: true, id: quotationId, convertedSaleId: saleId };
+  });
+}
+
 export async function convertQuotationToSale(
   licenseId: string,
   quotationId: string,
@@ -434,6 +579,8 @@ export async function convertQuotationToSale(
   if (!quotation) throw new Error("Quotation not found");
   if (quotation.status === "CONVERTED")
     throw new Error("Quotation is already converted");
+  if (quotation.status === "EXPIRED")
+    throw new Error("Cannot convert an expired quotation");
 
   const now = new Date();
   const saleDate = overrides.saleDate ? new Date(overrides.saleDate) : now;
