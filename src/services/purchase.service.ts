@@ -190,6 +190,20 @@ async function applySellingRatesSnapshot(
   }
   if (!Array.isArray(values)) throw new Error("Invalid selling-rate snapshot");
 
+  const [product, batch] = await Promise.all([
+    tx.product.findFirst({
+      where: { id: productId, licenseId, deletedAt: null },
+      select: { id: true },
+    }),
+    tx.productBatch.findFirst({
+      where: { id: batchId, productId, licenseId, deletedAt: null },
+      select: { id: true },
+    }),
+  ]);
+  if (!product || !batch) {
+    throw new Error("Product or batch does not belong to this license");
+  }
+
   const rateTypes = await tx.rateType.findMany({
     where: { licenseId, deletedAt: null },
   });
