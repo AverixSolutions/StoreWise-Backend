@@ -59,6 +59,9 @@ model License {
   offers             Offer[]
   offerTargets       OfferTargetProduct[]
   saleSequences      SaleSequence[]
+  rateTypes          RateType[]
+  productRates       ProductRate[]
+  productBatchRates  ProductBatchRate[]
 }
 
 model Franchise {
@@ -131,11 +134,79 @@ model Product {
   offerTargets        OfferTargetProduct[]
   quotationItems      QuotationItem[]
   purchaseReturnItems PurchaseReturnItem[]
+  rates               ProductRate[]
+  batchRates          ProductBatchRate[]
 
   @@unique([licenseId, code])
   @@unique([licenseId, codeNumber])
   @@index([licenseId, code])
   @@index([licenseId, name])
+  @@index([isSynced])
+}
+
+model RateType {
+  id                String             @id @default(uuid())
+  licenseId         String
+  code              String
+  name              String
+  isDefault         Boolean            @default(false)
+  isActive          Boolean            @default(true)
+  sortOrder         Int                @default(0)
+  createdAt         DateTime?          @default(now())
+  updatedAt         DateTime           @default(now())
+  deletedAt         DateTime?
+  isSynced          Boolean            @default(false)
+  syncedAt          DateTime?
+  license           License            @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  productRates      ProductRate[]
+  productBatchRates ProductBatchRate[]
+
+  @@index([licenseId, isActive, sortOrder])
+  @@index([licenseId, updatedAt])
+  @@index([isSynced])
+}
+
+model ProductRate {
+  id         String    @id @default(uuid())
+  licenseId  String
+  productId  String
+  rateTypeId String
+  amount     Decimal   @db.Decimal(10, 2)
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime  @default(now())
+  deletedAt  DateTime?
+  isSynced   Boolean   @default(false)
+  syncedAt   DateTime?
+  license    License   @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rateType   RateType  @relation(fields: [rateTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, rateTypeId])
+  @@index([licenseId, productId])
+  @@index([licenseId, rateTypeId])
+  @@index([isSynced])
+}
+
+model ProductBatchRate {
+  id         String       @id @default(uuid())
+  licenseId  String
+  productId  String
+  batchId    String
+  rateTypeId String
+  amount     Decimal      @db.Decimal(10, 2)
+  createdAt  DateTime?    @default(now())
+  updatedAt  DateTime     @default(now())
+  deletedAt  DateTime?
+  isSynced   Boolean      @default(false)
+  syncedAt   DateTime?
+  license    License      @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  product    Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batch      ProductBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rateType   RateType     @relation(fields: [rateTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, rateTypeId])
+  @@index([licenseId, productId])
+  @@index([licenseId, rateTypeId])
   @@index([isSynced])
 }
 
@@ -159,6 +230,7 @@ model ProductBatch {
   updatedAt                DateTime?
   deletedAt                DateTime?
   product                  Product   @relation(fields: [productId], references: [id])
+  rates                    ProductBatchRate[]
 
   @@index([productId, deletedAt])
   @@index([licenseId, barcode])
@@ -252,6 +324,7 @@ model PurchaseItem {
   discount           Decimal?   @db.Decimal(10, 2)
   discountType       String?
   salePrice          Decimal?   @db.Decimal(10, 2)
+  sellingRatesJson   String?
   profit             Decimal?   @db.Decimal(10, 2)
   totalCost          Decimal    @db.Decimal(10, 2)
   billedValue        Decimal?   @db.Decimal(10, 2)
@@ -322,6 +395,7 @@ model PurchaseReturnItem {
   discount           Decimal?       @db.Decimal(10, 2)
   discountType       String?
   salePrice          Decimal?       @db.Decimal(10, 2)
+  sellingRatesJson   String?
   profit             Decimal?       @db.Decimal(10, 2)
   totalCost          Decimal        @db.Decimal(10, 2)
   billedValue        Decimal?       @db.Decimal(10, 2)
@@ -431,6 +505,10 @@ model SaleItem {
   discount           Decimal?   @db.Decimal(10, 2)
   discountType       String?
   salePrice          Decimal?   @db.Decimal(10, 2)
+  rateTypeId         String?
+  rateTypeCode       String?
+  rateTypeName       String?
+  rateSource         String?    @default("LEGACY")
   profit             Decimal?   @db.Decimal(10, 2)
   totalCost          Decimal    @db.Decimal(10, 2)
   billedValue        Decimal?   @db.Decimal(10, 2)
@@ -575,6 +653,10 @@ model SaleReturnItem {
   discount           Decimal?   @db.Decimal(10, 2)
   discountType       String?
   salePrice          Decimal?   @db.Decimal(10, 2)
+  rateTypeId         String?
+  rateTypeCode       String?
+  rateTypeName       String?
+  rateSource         String?    @default("LEGACY")
   profit             Decimal?   @db.Decimal(10, 2)
   totalCost          Decimal    @db.Decimal(10, 2)
   billedValue        Decimal?   @db.Decimal(10, 2)
@@ -665,6 +747,10 @@ model QuotationItem {
   discount           Decimal?   @db.Decimal(10, 2)
   discountType       String?
   salePrice          Decimal?   @db.Decimal(10, 2)
+  rateTypeId         String?
+  rateTypeCode       String?
+  rateTypeName       String?
+  rateSource         String?    @default("LEGACY")
   profit             Decimal?   @db.Decimal(10, 2)
   totalCost          Decimal    @db.Decimal(10, 2)
   billedValue        Decimal?   @db.Decimal(10, 2)

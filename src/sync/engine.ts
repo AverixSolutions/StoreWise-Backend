@@ -29,7 +29,10 @@ export type SyncableModel =
   | "quotation"
   | "quotationItem"
   | "offer"
-  | "offerTargetProduct";
+  | "offerTargetProduct"
+  | "rateType"
+  | "productRate"
+  | "productBatchRate";
 
 // ── Field allow-lists ─────────────────────────────────────────────────────────
 
@@ -77,6 +80,42 @@ const PRODUCT_BATCH_FIELDS = [
   "createdAt",
   "updatedAt",
   "deletedAt",
+];
+const RATE_TYPE_FIELDS = [
+  "licenseId",
+  "code",
+  "name",
+  "isDefault",
+  "isActive",
+  "sortOrder",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+const PRODUCT_RATE_FIELDS = [
+  "licenseId",
+  "productId",
+  "rateTypeId",
+  "amount",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
+];
+const PRODUCT_BATCH_RATE_FIELDS = [
+  "licenseId",
+  "productId",
+  "batchId",
+  "rateTypeId",
+  "amount",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+  "isSynced",
+  "syncedAt",
 ];
 const SUPPLIER_FIELDS = [
   "licenseId",
@@ -207,6 +246,7 @@ const PURCHASE_ITEM_FIELDS = [
   "discount",
   "discountType",
   "salePrice",
+  "sellingRatesJson",
   "profit",
   "totalCost",
   "billedValue",
@@ -264,6 +304,10 @@ const SALE_ITEM_FIELDS = [
   "discount",
   "discountType",
   "salePrice",
+  "rateTypeId",
+  "rateTypeCode",
+  "rateTypeName",
+  "rateSource",
   "profit",
   "totalCost",
   "billedValue",
@@ -368,6 +412,7 @@ const PURCHASE_RETURN_ITEM_FIELDS = [
   "discount",
   "discountType",
   "salePrice",
+  "sellingRatesJson",
   "profit",
   "totalCost",
   "billedValue",
@@ -425,6 +470,10 @@ const SALE_RETURN_ITEM_FIELDS = [
   "discount",
   "discountType",
   "salePrice",
+  "rateTypeId",
+  "rateTypeCode",
+  "rateTypeName",
+  "rateSource",
   "profit",
   "totalCost",
   "billedValue",
@@ -531,6 +580,10 @@ const QUOTATION_ITEM_FIELDS = [
   "discount",
   "discountType",
   "salePrice",
+  "rateTypeId",
+  "rateTypeCode",
+  "rateTypeName",
+  "rateSource",
   "profit",
   "totalCost",
   "billedValue",
@@ -606,6 +659,9 @@ const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   cashTransaction: CASH_TRANSACTION_FIELDS,
   offer: OFFER_FIELDS,
   offerTargetProduct: OFFER_TARGET_PRODUCT_FIELDS,
+  rateType: RATE_TYPE_FIELDS,
+  productRate: PRODUCT_RATE_FIELDS,
+  productBatchRate: PRODUCT_BATCH_RATE_FIELDS,
 };
 
 const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
@@ -617,6 +673,7 @@ const BOOLEAN_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   quotationItem: ["isFree"],
   transactionType: ["isDefault"],
   offer: ["isActive", "customerRequired", "oncePerBill"],
+  rateType: ["isDefault", "isActive"],
 };
 
 const COMPOSITE_CODE_ENTITIES: SyncableModel[] = ["unit", "taxCategory"];
@@ -752,6 +809,9 @@ export async function handlePush(
   const isPurchaseReturnItem = entity === "purchaseReturnItem";
   const isSaleReturnItem = entity === "saleReturnItem";
   const isQuotationItem = entity === "quotationItem";
+  const isRateType = entity === "rateType";
+  const isRateValue =
+    entity === "productRate" || entity === "productBatchRate";
   const noLicenseId = NO_LICENSE_ID_ENTITIES.includes(entity);
   const hasSyncStatus = hasSyncStatusFields(entity);
   const results: PushResult[] = [];
@@ -875,6 +935,108 @@ export async function handlePush(
 
       return true;
     });
+  }
+
+  if (isRateValue) {
+    validRecords = validRecords.flatMap((record) => {
+      const amount =
+        record.amount == null || record.amount === ""
+          ? Number.NaN
+          : Number(record.amount);
+      if (!Number.isFinite(amount) || amount < 0) {
+        results.push({
+          id: record.id,
+          accepted: false,
+          serverUpdatedAt: serverNow,
+        });
+        return [];
+      }
+      return [{ ...record, amount }];
+    });
+    const productIds = [
+      ...new Set(validRecords.map((r) => r.productId).filter(Boolean)),
+    ];
+    const rateTypeIds = [
+      ...new Set(validRecords.map((r) => r.rateTypeId).filter(Boolean)),
+    ];
+    const [products, rateTypes] = await Promise.all([
+      prisma.product.findMany({
+        where: { id: { in: productIds }, licenseId },
+        select: { id: true },
+      }),
+      prisma.rateType.findMany({
+        where: { id: { in: rateTypeIds }, licenseId },
+        select: { id: true },
+      }),
+    ]);
+    const validProductIds = new Set(products.map((row) => row.id));
+    const validRateTypeIds = new Set(rateTypes.map((row) => row.id));
+    let validBatchProducts: Map<string, string> | null = null;
+    if (entity === "productBatchRate") {
+      const batchIds = [
+        ...new Set(validRecords.map((r) => r.batchId).filter(Boolean)),
+      ];
+      const batches = await prisma.productBatch.findMany({
+        where: { id: { in: batchIds }, licenseId },
+        select: { id: true, productId: true },
+      });
+      validBatchProducts = new Map(
+        batches.map((row) => [row.id, row.productId]),
+      );
+    }
+    validRecords = validRecords.filter((record) => {
+      const valid =
+        validProductIds.has(record.productId) &&
+        validRateTypeIds.has(record.rateTypeId) &&
+        (!validBatchProducts ||
+          validBatchProducts.get(record.batchId) === record.productId);
+      if (!valid) {
+        results.push({
+          id: record.id,
+          accepted: false,
+          serverUpdatedAt: serverNow,
+        });
+      }
+      return valid;
+    });
+  }
+
+  if (isRateType) {
+    validRecords = validRecords.map((record) => ({
+      ...record,
+      code: String(record.code ?? "").trim().toUpperCase(),
+      name: String(record.name ?? "").trim(),
+      isDefault:
+        Boolean(record.isDefault) &&
+        Boolean(record.isActive) &&
+        !record.deletedAt,
+    }));
+    validRecords = validRecords.filter((record) => {
+      const valid = Boolean(record.code) && Boolean(record.name);
+      if (!valid) {
+        results.push({
+          id: record.id,
+          accepted: false,
+          serverUpdatedAt: serverNow,
+        });
+      }
+      return valid;
+    });
+    const requestedDefaults = validRecords
+      .filter((record) => record.isDefault)
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt ?? 0).getTime() -
+            new Date(a.updatedAt ?? 0).getTime() ||
+          String(a.id).localeCompare(String(b.id)),
+      );
+    if (requestedDefaults.length > 1) {
+      const winnerId = requestedDefaults[0].id;
+      validRecords = validRecords.map((record) => ({
+        ...record,
+        isDefault: record.isDefault && record.id === winnerId,
+      }));
+    }
   }
 
   if (validRecords.length === 0) return results;
@@ -1077,6 +1239,28 @@ export async function handlePush(
     await prisma.$transaction(async (tx) => {
       const delegate = getDelegate(tx, entity);
 
+      const incomingDefault = isRateType
+        ? [
+            ...toCreate,
+            ...toUpdate.map((entry) => ({
+              id: entry.where.id,
+              ...entry.data,
+            })),
+          ].find(
+            (data) => data.isDefault && data.isActive && !data.deletedAt,
+          )
+        : null;
+      if (incomingDefault) {
+        await tx.rateType.updateMany({
+          where: {
+            licenseId,
+            isDefault: true,
+            NOT: { id: incomingDefault.id },
+          },
+          data: { isDefault: false, updatedAt: serverNow, isSynced: true },
+        });
+      }
+
       for (const data of toCreate) {
         await delegate.upsert({
           where: getUpsertWhere(entity, data, isShopSettings),
@@ -1087,6 +1271,245 @@ export async function handlePush(
 
       for (const { where, data } of toUpdate) {
         await delegate.update({ where, data });
+      }
+
+      let resolvedRateTypeDefaultId: string | null = null;
+      if (isRateType) {
+        let currentDefault = await tx.rateType.findFirst({
+          where: {
+            licenseId,
+            isDefault: true,
+            isActive: true,
+            deletedAt: null,
+          },
+          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        });
+        if (!currentDefault) {
+          currentDefault = await tx.rateType.findFirst({
+            where: { licenseId, isActive: true, deletedAt: null },
+            orderBy: [
+              { sortOrder: "asc" },
+              { updatedAt: "desc" },
+              { id: "asc" },
+            ],
+          });
+          if (currentDefault) {
+            await tx.rateType.update({
+              where: { id: currentDefault.id },
+              data: {
+                isDefault: true,
+                updatedAt: serverNow,
+                isSynced: true,
+                syncedAt: serverNow,
+              },
+            });
+          }
+        }
+        if (!currentDefault) {
+          let fallback = await tx.rateType.findFirst({
+            where: {
+              licenseId,
+              deletedAt: null,
+              code: { equals: "RETAIL", mode: "insensitive" },
+            },
+            orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+          });
+          fallback ??= await tx.rateType.findFirst({
+            where: { licenseId, deletedAt: null },
+            orderBy: [
+              { sortOrder: "asc" },
+              { updatedAt: "desc" },
+              { id: "asc" },
+            ],
+          });
+          fallback ??= await tx.rateType.findFirst({
+            where: {
+              licenseId,
+              code: { equals: "RETAIL", mode: "insensitive" },
+            },
+            orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+          });
+          if (fallback) {
+            currentDefault = await tx.rateType.update({
+              where: { id: fallback.id },
+              data: {
+                isDefault: true,
+                isActive: true,
+                deletedAt: null,
+                updatedAt: serverNow,
+                isSynced: true,
+                syncedAt: serverNow,
+              },
+            });
+          } else {
+            currentDefault = await tx.rateType.create({
+              data: {
+                id: `retail-${licenseId}`,
+                licenseId,
+                code: "RETAIL",
+                name: "Retail",
+                isDefault: true,
+                isActive: true,
+                sortOrder: 0,
+                createdAt: serverNow,
+                updatedAt: serverNow,
+                isSynced: true,
+                syncedAt: serverNow,
+              },
+            });
+          }
+        }
+        resolvedRateTypeDefaultId = currentDefault?.id ?? null;
+      }
+
+      if (entity === "productRate" || entity === "productBatchRate") {
+        const currentDefault = await tx.rateType.findFirst({
+          where: { licenseId, isDefault: true, isActive: true, deletedAt: null },
+          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        });
+        if (currentDefault && entity === "productRate") {
+          const productIds = new Set(
+            [
+              ...toCreate.map((row) => row.productId),
+              ...toUpdate.map((entry) => entry.data.productId),
+            ].filter(Boolean),
+          );
+          for (const productId of productIds) {
+            const rate = await tx.productRate.findFirst({
+              where: {
+                licenseId,
+                productId,
+                rateTypeId: currentDefault.id,
+                deletedAt: null,
+              },
+            });
+            await tx.product.update({
+              where: { id: productId },
+              data: {
+                salePrice: rate?.amount ?? null,
+                updatedAt: serverNow,
+                isSynced: true,
+              },
+            });
+            await tx.productBatch.updateMany({
+              where: {
+                licenseId,
+                productId,
+                rates: {
+                  none: {
+                    rateTypeId: currentDefault.id,
+                    deletedAt: null,
+                  },
+                },
+              },
+              data: {
+                salePrice: rate?.amount ?? null,
+                updatedAt: serverNow,
+              },
+            });
+          }
+        }
+        if (currentDefault && entity === "productBatchRate") {
+          const batchIds = new Set(
+            [
+              ...toCreate.map((row) => row.batchId),
+              ...toUpdate.map((entry) => entry.data.batchId),
+            ].filter(Boolean),
+          );
+          for (const batchId of batchIds) {
+            const batch = await tx.productBatch.findUnique({
+              where: { id: batchId },
+            });
+            if (!batch) continue;
+            const batchRate = await tx.productBatchRate.findFirst({
+              where: {
+                licenseId,
+                batchId,
+                rateTypeId: currentDefault.id,
+                deletedAt: null,
+              },
+            });
+            const productRate = batchRate
+              ? null
+              : await tx.productRate.findFirst({
+                  where: {
+                    licenseId,
+                    productId: batch.productId,
+                    rateTypeId: currentDefault.id,
+                    deletedAt: null,
+                  },
+                });
+            await tx.productBatch.update({
+              where: { id: batchId },
+              data: {
+                salePrice: batchRate?.amount ?? productRate?.amount ?? null,
+                updatedAt: serverNow,
+              },
+            });
+          }
+        }
+      }
+
+      if (resolvedRateTypeDefaultId) {
+        await tx.product.updateMany({
+          where: { licenseId },
+          data: { salePrice: null, updatedAt: serverNow, isSynced: true },
+        });
+        const productRates = await tx.productRate.findMany({
+          where: {
+            licenseId,
+            rateTypeId: resolvedRateTypeDefaultId,
+            deletedAt: null,
+          },
+          select: { productId: true, amount: true },
+        });
+        for (const rate of productRates) {
+          await tx.product.update({
+            where: { id: rate.productId },
+            data: { salePrice: rate.amount, updatedAt: serverNow, isSynced: true },
+          });
+        }
+        await tx.productBatch.updateMany({
+          where: { licenseId },
+          data: { salePrice: null, updatedAt: serverNow },
+        });
+        const batchRates = await tx.productBatchRate.findMany({
+          where: {
+            licenseId,
+            rateTypeId: resolvedRateTypeDefaultId,
+            deletedAt: null,
+          },
+          select: { batchId: true, amount: true },
+        });
+        for (const rate of batchRates) {
+          await tx.productBatch.update({
+            where: { id: rate.batchId },
+            data: { salePrice: rate.amount, updatedAt: serverNow },
+          });
+        }
+        const batchesWithoutOverride = await tx.productBatch.findMany({
+          where: {
+            licenseId,
+            rates: {
+              none: {
+                rateTypeId: resolvedRateTypeDefaultId,
+                deletedAt: null,
+              },
+            },
+          },
+          select: { id: true, productId: true },
+        });
+        for (const batch of batchesWithoutOverride) {
+          const productRate = productRates.find(
+            (rate) => rate.productId === batch.productId,
+          );
+          if (productRate) {
+            await tx.productBatch.update({
+              where: { id: batch.id },
+              data: { salePrice: productRate.amount, updatedAt: serverNow },
+            });
+          }
+        }
       }
     });
   }

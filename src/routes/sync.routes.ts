@@ -7,6 +7,9 @@ const router = Router();
 
 const ALLOWED_ENTITIES: SyncableModel[] = [
   "product",
+  "rateType",
+  "productRate",
+  "productBatchRate",
   "productBatch",
   "supplier",
   "purchase",

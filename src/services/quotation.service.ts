@@ -110,6 +110,10 @@ export interface QuotationItemInput {
   discount?: number;
   discountType?: "ABS" | "PCT";
   salePrice?: number | null;
+  rateTypeId?: string | null;
+  rateTypeCode?: string | null;
+  rateTypeName?: string | null;
+  rateSource?: "MASTER" | "CUSTOM" | "LEGACY";
   profit?: number | null;
   totalCost?: number;
   billedValue?: number;
@@ -208,6 +212,10 @@ export async function createQuotation(
           discount: item.discount ?? 0,
           discountType: item.discountType ?? null,
           salePrice: item.salePrice ?? null,
+          rateTypeId: item.rateTypeId ?? null,
+          rateTypeCode: item.rateTypeCode?.trim() || null,
+          rateTypeName: item.rateTypeName?.trim() || null,
+          rateSource: item.rateSource ?? "LEGACY",
           profit: item.profit ?? null,
           totalCost,
           billedValue,
@@ -414,6 +422,10 @@ export async function updateQuotation(
           discount: item.discount ?? 0,
           discountType: item.discountType ?? null,
           salePrice: item.salePrice ?? null,
+          rateTypeId: item.rateTypeId ?? null,
+          rateTypeCode: item.rateTypeCode?.trim() || null,
+          rateTypeName: item.rateTypeName?.trim() || null,
+          rateSource: item.rateSource ?? "LEGACY",
           profit: item.profit ?? null,
           totalCost,
           billedValue,
@@ -694,6 +706,10 @@ export async function convertQuotationToSale(
           discount: item.discount ?? 0,
           discountType: item.discountType ?? null,
           salePrice: item.salePrice ?? null,
+          rateTypeId: item.rateTypeId ?? null,
+          rateTypeCode: item.rateTypeCode ?? null,
+          rateTypeName: item.rateTypeName ?? null,
+          rateSource: item.rateSource ?? "LEGACY",
           profit: (item as any).profit ?? null,
           totalCost: item.totalCost,
           billedValue: item.billedValue ?? null,

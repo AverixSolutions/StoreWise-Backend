@@ -102,6 +102,10 @@ export interface SaleItemInput {
   discount?: number;
   discountType?: "ABS" | "PCT";
   salePrice?: number | null;
+  rateTypeId?: string | null;
+  rateTypeCode?: string | null;
+  rateTypeName?: string | null;
+  rateSource?: "MASTER" | "CUSTOM" | "LEGACY";
   profit?: number | null;
   totalCost?: number;
   billedValue?: number;
@@ -279,6 +283,10 @@ export async function createSale(
           discount: discountAbs,
           discountType: item.discountType ?? "ABS",
           salePrice,
+          rateTypeId: item.rateTypeId ?? null,
+          rateTypeCode: item.rateTypeCode?.trim() || null,
+          rateTypeName: item.rateTypeName?.trim() || null,
+          rateSource: item.rateSource ?? "LEGACY",
           profit,
           totalCost,
           billedValue,
@@ -523,6 +531,10 @@ export async function updateSale(
           discount: discountAbs,
           discountType: item.discountType ?? "ABS",
           salePrice,
+          rateTypeId: item.rateTypeId ?? null,
+          rateTypeCode: item.rateTypeCode?.trim() || null,
+          rateTypeName: item.rateTypeName?.trim() || null,
+          rateSource: item.rateSource ?? "LEGACY",
           profit,
           totalCost,
           billedValue,
