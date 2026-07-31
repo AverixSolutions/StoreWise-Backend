@@ -188,6 +188,7 @@ export interface PurchaseReturnItemInput {
   lineNo?: number;
   isFree?: boolean | number;
   profitPercent?: number;
+  sellingRatesJson?: string | null;
 }
 
 export async function createPurchaseReturn(
@@ -319,6 +320,7 @@ export async function createPurchaseReturn(
           discount: discountAbs,
           discountType: item.discountType ?? "ABS",
           salePrice: salePrice ?? null,
+          sellingRatesJson: item.sellingRatesJson ?? null,
           profit: profit ?? null,
           totalCost,
           billedValue,
@@ -508,6 +510,7 @@ export async function updatePurchaseReturn(
           discount: discountAbs,
           discountType: item.discountType ?? "ABS",
           salePrice: salePrice ?? null,
+          sellingRatesJson: item.sellingRatesJson ?? null,
           profit: profit ?? null,
           totalCost,
           billedValue,

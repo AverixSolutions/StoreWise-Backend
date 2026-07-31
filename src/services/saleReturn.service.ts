@@ -179,6 +179,10 @@ export interface SaleReturnItemInput {
   lineNo?: number;
   isFree?: boolean | number;
   profitPercent?: number;
+  rateTypeId?: string | null;
+  rateTypeCode?: string | null;
+  rateTypeName?: string | null;
+  rateSource?: "MASTER" | "CUSTOM" | "LEGACY";
 }
 
 export async function createSaleReturn(
@@ -304,6 +308,10 @@ export async function createSaleReturn(
           discount: discountAbs,
           discountType: item.discountType ?? "ABS",
           salePrice: salePrice ?? null,
+          rateTypeId: item.rateTypeId ?? null,
+          rateTypeCode: item.rateTypeCode?.trim() || null,
+          rateTypeName: item.rateTypeName?.trim() || null,
+          rateSource: item.rateSource ?? "LEGACY",
           profit: profit ?? null,
           totalCost,
           billedValue,
@@ -485,6 +493,10 @@ export async function updateSaleReturn(
           discount: discountAbs,
           discountType: item.discountType ?? "ABS",
           salePrice: salePrice ?? null,
+          rateTypeId: item.rateTypeId ?? null,
+          rateTypeCode: item.rateTypeCode?.trim() || null,
+          rateTypeName: item.rateTypeName?.trim() || null,
+          rateSource: item.rateSource ?? "LEGACY",
           profit: profit ?? null,
           totalCost,
           billedValue,

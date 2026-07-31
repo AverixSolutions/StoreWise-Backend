@@ -162,6 +162,129 @@ async function bumpBatchAndProductStock(
   });
 }
 
+async function applySellingRatesSnapshot(
+  tx: any,
+  {
+    licenseId,
+    productId,
+    batchId,
+    sellingRatesJson,
+    now,
+  }: {
+    licenseId: string;
+    productId: string;
+    batchId: string;
+    sellingRatesJson?: string | null;
+    now: Date;
+  },
+) {
+  if (!sellingRatesJson) return;
+  let values: Array<{ rateTypeId?: string; amount?: number | string | null }>;
+  try {
+    values =
+      typeof sellingRatesJson === "string"
+        ? JSON.parse(sellingRatesJson)
+        : sellingRatesJson;
+  } catch {
+    throw new Error("Invalid selling-rate snapshot");
+  }
+  if (!Array.isArray(values)) throw new Error("Invalid selling-rate snapshot");
+
+  const rateTypes = await tx.rateType.findMany({
+    where: { licenseId, deletedAt: null },
+  });
+  const byId = new Map(rateTypes.map((rate: any) => [rate.id, rate]));
+  let hasDefault = false;
+  let defaultAmount: number | null = null;
+
+  for (const value of values) {
+    const rateTypeId = String(value.rateTypeId || "").trim();
+    const rateType: any = byId.get(rateTypeId);
+    if (!rateType) {
+      throw new Error("Selling rate does not belong to this license");
+    }
+    const amount =
+      value.amount == null || value.amount === "" ? null : Number(value.amount);
+    if (amount != null && (!Number.isFinite(amount) || amount < 0)) {
+      throw new Error("Selling rates must be non-negative numbers");
+    }
+    if (rateType.isDefault) {
+      hasDefault = true;
+      defaultAmount = amount;
+    }
+
+    if (amount == null) {
+      await tx.productRate.updateMany({
+        where: { licenseId, productId, rateTypeId, deletedAt: null },
+        data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
+      });
+      await tx.productBatchRate.updateMany({
+        where: { licenseId, batchId, rateTypeId, deletedAt: null },
+        data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
+      });
+      continue;
+    }
+
+    await tx.productRate.upsert({
+      where: { productId_rateTypeId: { productId, rateTypeId } },
+      create: {
+        id: `pr:${productId}:${rateTypeId}`,
+        licenseId,
+        productId,
+        rateTypeId,
+        amount,
+        createdAt: now,
+        updatedAt: now,
+        isSynced: false,
+      },
+      update: {
+        amount,
+        deletedAt: null,
+        updatedAt: now,
+        isSynced: false,
+        syncedAt: null,
+      },
+    });
+    await tx.productBatchRate.upsert({
+      where: { batchId_rateTypeId: { batchId, rateTypeId } },
+      create: {
+        id: `pbr:${batchId}:${rateTypeId}`,
+        licenseId,
+        productId,
+        batchId,
+        rateTypeId,
+        amount,
+        createdAt: now,
+        updatedAt: now,
+        isSynced: false,
+      },
+      update: {
+        amount,
+        deletedAt: null,
+        updatedAt: now,
+        isSynced: false,
+        syncedAt: null,
+      },
+    });
+  }
+
+  if (hasDefault) {
+    await tx.product.update({
+      where: { id: productId },
+      data: {
+        salePrice: defaultAmount,
+        updatedAt: now,
+        isSynced: false,
+        syncedAt: null,
+      },
+    });
+    await tx.productBatch.update({
+      where: { id: batchId },
+      data: { salePrice: defaultAmount, updatedAt: now },
+    });
+  }
+}
+
 // ── CREATE PURCHASE ───────────────────────────────────────────────────────────
 
 export interface CreatePurchaseInput {
@@ -201,6 +324,7 @@ export interface PurchaseItemInput {
   lineNo?: number;
   isFree?: boolean | number;
   profitPercent?: number;
+  sellingRatesJson?: string | null;
 }
 
 export async function createPurchase(
@@ -316,6 +440,13 @@ export async function createPurchase(
       if (!isFree) {
         await bumpBatchAndProductStock(tx, batch.id, item.productId, qty);
       }
+      await applySellingRatesSnapshot(tx, {
+        licenseId,
+        productId: item.productId,
+        batchId: batch.id,
+        sellingRatesJson: item.sellingRatesJson,
+        now,
+      });
 
       // Insert item
       await tx.purchaseItem.create({
@@ -333,6 +464,7 @@ export async function createPurchase(
           discount: discountAbs,
           discountType: item.discountType ?? "ABS",
           salePrice: salePrice ?? null,
+          sellingRatesJson: item.sellingRatesJson ?? null,
           profit: profit ?? null,
           totalCost,
           billedValue,
@@ -509,6 +641,13 @@ export async function updatePurchase(
         expiryDate: item.expiryDate ?? null,
         receivedAt: purchaseDate,
       });
+      await applySellingRatesSnapshot(tx, {
+        licenseId,
+        productId: item.productId,
+        batchId: batch.id,
+        sellingRatesJson: item.sellingRatesJson,
+        now,
+      });
 
       if (!isFree) {
         await bumpBatchAndProductStock(tx, batch.id, item.productId, qty);
@@ -529,6 +668,7 @@ export async function updatePurchase(
           discount: discountAbs,
           discountType: item.discountType ?? "ABS",
           salePrice: salePrice ?? null,
+          sellingRatesJson: item.sellingRatesJson ?? null,
           profit: profit ?? null,
           totalCost,
           billedValue,
