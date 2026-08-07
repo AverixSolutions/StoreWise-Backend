@@ -7,6 +7,7 @@ import {
   deletePurchaseReturn,
   listPurchaseReturns,
   getPurchaseReturnFull,
+  getPurchaseReturnSource,
   peekNextPurchaseReturnSlNo,
   savePurchaseReturnHold,
   listPurchaseReturnHolds,
@@ -131,6 +132,29 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/purchase-returns/source/:purchaseId?excludeReturnId=...
+router.get("/source/:purchaseId", async (req: Request, res: Response) => {
+  const licenseId = getLicenseId(req);
+  try {
+    const result = await getPurchaseReturnSource(
+      licenseId,
+      req.params.purchaseId,
+      (req.query.excludeReturnId as string) || null,
+    );
+    if (!result.success) return res.status(400).json(result);
+    res.json(result);
+  } catch (err: any) {
+    const message = err?.message || "Failed to load source Purchase";
+    const status =
+      message.includes("not found") ||
+      message.includes("does not belong") ||
+      message.includes("deleted")
+        ? 400
+        : 500;
+    res.status(status).json({ success: false, error: message });
+  }
+});
+
 // ── Dynamic :id routes ───────────────────────────────────────────────────────
 
 // GET /api/purchase-returns/:id
@@ -162,7 +186,13 @@ router.post("/", async (req: Request, res: Response) => {
   } catch (err: any) {
     const msg = err.message || "Failed";
     const status =
-      msg.includes("Supplier") || msg.includes("stock") ? 400 : 500;
+      msg.includes("Supplier") ||
+      msg.includes("Purchase") ||
+      msg.includes("return") ||
+      msg.includes("stock") ||
+      msg.includes("batch")
+        ? 400
+        : 500;
     res.status(status).json({ success: false, error: msg });
   }
 });
@@ -182,7 +212,14 @@ router.put("/:id", async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     const msg = err.message || "Failed";
-    const status = msg.includes("not found") ? 404 : 500;
+    const status = msg.includes("not found")
+      ? 404
+      : msg.includes("Purchase") ||
+          msg.includes("return") ||
+          msg.includes("stock") ||
+          msg.includes("batch")
+        ? 400
+        : 500;
     res.status(status).json({ success: false, error: msg });
   }
 });

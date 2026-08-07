@@ -55,6 +55,22 @@ async function reverseBatchAndProductStock(
   });
 }
 
+async function adjustLegacyProductStock(
+  tx: any,
+  productId: string,
+  delta: number,
+) {
+  await tx.product.update({
+    where: { id: productId },
+    data: {
+      stock: { increment: delta },
+      updatedAt: new Date(),
+      isSynced: false,
+      syncedAt: null,
+    },
+  });
+}
+
 // Compute amounts for an item, with applied quantity (limited by available stock)
 function computeReturnAmounts(
   item: {
@@ -148,10 +164,390 @@ async function resolveReturnBatch(
   return batch;
 }
 
+async function getPreviouslyReturnedQuantity(
+  tx: any,
+  purchaseId: string,
+  purchaseItemId: string,
+  excludeReturnId?: string | null,
+) {
+  const rows = await tx.purchaseReturnItem.findMany({
+    where: {
+      purchaseItemId,
+      deletedAt: null,
+      purchaseReturn: {
+        purchaseId,
+        deletedAt: null,
+        ...(excludeReturnId ? { id: { not: excludeReturnId } } : {}),
+      },
+    },
+    select: {
+      quantity: true,
+      appliedQuantity: true,
+    },
+  });
+
+  return rows.reduce(
+    (sum: number, row: any) =>
+      sum + Number(row.appliedQuantity ?? row.quantity ?? 0),
+    0,
+  );
+}
+
+async function resolveLinkedPurchaseItem(
+  tx: any,
+  licenseId: string,
+  purchaseId: string,
+  item: PurchaseReturnItemInput,
+  excludeReturnId?: string | null,
+) {
+  if (!item.purchaseItemId) {
+    throw new Error("Source Purchase item is required.");
+  }
+
+  const sourceItem = await tx.purchaseItem.findFirst({
+    where: {
+      id: item.purchaseItemId,
+      purchaseId,
+      deletedAt: null,
+      purchase: {
+        licenseId,
+        deletedAt: null,
+      },
+    },
+  });
+
+  if (!sourceItem) {
+    throw new Error("Source Purchase item was not found.");
+  }
+
+  if (sourceItem.productId !== item.productId) {
+    throw new Error(
+      "Returned product does not match the source Purchase item.",
+    );
+  }
+
+  const previouslyReturnedQuantity = await getPreviouslyReturnedQuantity(
+    tx,
+    purchaseId,
+    sourceItem.id,
+    excludeReturnId,
+  );
+  const purchasedQuantity = Number(sourceItem.quantity || 0);
+  const remainingReturnableQuantity = Math.max(
+    0,
+    purchasedQuantity - previouslyReturnedQuantity,
+  );
+
+  return {
+    sourceItem,
+    purchasedQuantity,
+    previouslyReturnedQuantity,
+    remainingReturnableQuantity,
+  };
+}
+
+export async function getPurchaseReturnSource(
+  licenseId: string,
+  purchaseId: string,
+  excludeReturnId?: string | null,
+) {
+  const purchase = await prisma.purchase.findFirst({
+    where: {
+      id: purchaseId,
+      licenseId,
+      deletedAt: null,
+    },
+  });
+
+  if (!purchase) {
+    return { success: false, error: "Purchase bill not found." };
+  }
+
+  if (!purchase.supplierId) {
+    return {
+      success: false,
+      error: "The selected Purchase bill does not have a supplier.",
+    };
+  }
+
+  const items = await prisma.purchaseItem.findMany({
+    where: {
+      purchaseId,
+      deletedAt: null,
+    },
+    include: {
+      product: true,
+    },
+    orderBy: {
+      lineNo: "asc",
+    },
+  });
+
+  const batchIds = items
+    .map((item) => item.batchId)
+    .filter((value): value is string => Boolean(value));
+  const batches = batchIds.length
+    ? await prisma.productBatch.findMany({
+        where: {
+          id: { in: batchIds },
+          licenseId,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          stock: true,
+        },
+      })
+    : [];
+  const stockByBatch = new Map(
+    batches.map((batch) => [batch.id, Number(batch.stock || 0)]),
+  );
+
+  const enrichedItems = await Promise.all(
+    items.map(async (item) => {
+      const previouslyReturnedQuantity = await getPreviouslyReturnedQuantity(
+        prisma,
+        purchaseId,
+        item.id,
+        excludeReturnId,
+      );
+      const purchasedQuantity = Number(item.quantity || 0);
+      const remainingReturnableQuantity = Math.max(
+        0,
+        purchasedQuantity - previouslyReturnedQuantity,
+      );
+
+      return {
+        ...item,
+        productName: item.product?.name ?? null,
+        productCode: item.product?.code ?? null,
+        quantity: purchasedQuantity,
+        rate: Number(item.rate),
+        mrp: item.mrp != null ? Number(item.mrp) : null,
+        taxAmount: Number(item.taxAmount),
+        discount: Number(item.discount ?? 0),
+        salePrice: item.salePrice != null ? Number(item.salePrice) : null,
+        profit: item.profit != null ? Number(item.profit) : null,
+        totalCost: Number(item.totalCost),
+        billedValue: item.billedValue != null ? Number(item.billedValue) : null,
+        effectiveUnitValue:
+          item.effectiveUnitValue != null
+            ? Number(item.effectiveUnitValue)
+            : null,
+        isFree: item.isFree ? 1 : 0,
+        previouslyReturnedQuantity,
+        remainingReturnableQuantity,
+        availableStock: item.isFree
+          ? remainingReturnableQuantity
+          : item.batchId
+            ? Math.max(0, stockByBatch.get(item.batchId) || 0)
+            : Math.max(0, Number(item.product?.stock || 0)),
+      };
+    }),
+  );
+
+  return {
+    success: true,
+    purchase: {
+      ...purchase,
+      totalAmount: Number(purchase.totalAmount),
+      discount: Number(purchase.discount ?? 0),
+    },
+    items: enrichedItems,
+  };
+}
+
+async function writePurchaseReturnItems(
+  tx: any,
+  {
+    licenseId,
+    returnId,
+    purchaseId,
+    items,
+    now,
+    excludeReturnId,
+  }: {
+    licenseId: string;
+    returnId: string;
+    purchaseId: string | null;
+    items: PurchaseReturnItemInput[];
+    now: Date;
+    excludeReturnId?: string | null;
+  },
+) {
+  let totalAmount = 0;
+  let savedItemCount = 0;
+  const sourceMode = Boolean(purchaseId);
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    const requestedQty = Number(item.quantity || 0);
+    if (requestedQty <= 0) continue;
+
+    let sourceItem: any = null;
+    let linked: any = null;
+
+    if (sourceMode && purchaseId) {
+      linked = await resolveLinkedPurchaseItem(
+        tx,
+        licenseId,
+        purchaseId,
+        item,
+        excludeReturnId,
+      );
+      sourceItem = linked.sourceItem;
+
+      if (requestedQty > linked.remainingReturnableQuantity) {
+        throw new Error(
+          `Row ${idx + 1}: only ${linked.remainingReturnableQuantity} can still be returned from this Purchase item.`,
+        );
+      }
+    }
+
+    const productId = sourceItem?.productId || item.productId;
+    const product = await tx.product.findFirst({
+      where: { id: productId, licenseId, deletedAt: null },
+    });
+    if (!product) {
+      throw new Error(`Row ${idx + 1}: product was not found.`);
+    }
+
+    const isFree = sourceMode
+      ? Boolean(sourceItem?.isFree)
+      : Boolean(item.isFree);
+
+    const hasBatchIdentity = Boolean(
+      item.batchId ||
+      item.batchNo ||
+      item.barcode ||
+      item.mfgDate ||
+      item.expiryDate,
+    );
+
+    const batch =
+      !isFree && hasBatchIdentity
+        ? await resolveReturnBatch(tx, licenseId, {
+            ...item,
+            productId,
+          })
+        : null;
+
+    const availableStock = isFree
+      ? Number.POSITIVE_INFINITY
+      : batch
+        ? Math.max(0, Number(batch.stock || 0))
+        : Math.max(0, Number(product.stock || 0));
+
+    if (!isFree && requestedQty > availableStock) {
+      throw new Error(
+        `Row ${idx + 1}: only ${availableStock} is available in the selected ${batch ? "batch" : "product stock"}.`,
+      );
+    }
+
+    const sourceQuantity = sourceItem
+      ? Math.max(1, Number(sourceItem.quantity || 0))
+      : 1;
+    const proportionalDiscount = sourceItem
+      ? (Number(sourceItem.discount || 0) / sourceQuantity) * requestedQty
+      : Number(item.discount || 0);
+
+    const amounts = computeReturnAmounts(
+      sourceItem
+        ? {
+            rate: Number(sourceItem.rate || 0),
+            taxPercent: String(sourceItem.taxPercent || "NT"),
+            quantity: requestedQty,
+            discountType: "ABS",
+            discount: proportionalDiscount,
+            salePrice:
+              item.salePrice != null
+                ? Number(item.salePrice)
+                : sourceItem.salePrice != null
+                  ? Number(sourceItem.salePrice)
+                  : null,
+            isFree,
+          }
+        : {
+            rate: Number(item.rate || 0),
+            taxPercent: String(item.taxPercent || "NT"),
+            quantity: requestedQty,
+            discountType: item.discountType || "ABS",
+            discount: Number(item.discount || 0),
+            salePrice: item.salePrice != null ? Number(item.salePrice) : null,
+            profitPercent: Number(item.profitPercent || 0),
+            isFree,
+          },
+      requestedQty,
+    );
+
+    totalAmount += amounts.billedValue;
+
+    if (!isFree) {
+      if (batch) {
+        await reverseBatchAndProductStock(
+          tx,
+          batch.id,
+          productId,
+          -requestedQty,
+        );
+      } else {
+        await adjustLegacyProductStock(tx, productId, -requestedQty);
+      }
+    }
+
+    await tx.purchaseReturnItem.create({
+      data: {
+        id: uuidv4(),
+        returnId,
+        purchaseItemId: sourceItem?.id ?? null,
+        productId,
+        barcode: item.barcode ?? sourceItem?.barcode ?? null,
+        quantity: requestedQty,
+        appliedQuantity: requestedQty,
+        overReturnQuantity: 0,
+        overReturnReason: null,
+        unit: sourceItem?.unit ?? item.unit,
+        isFree,
+        rate: sourceItem?.rate ?? item.rate,
+        mrp: item.mrp ?? sourceItem?.mrp ?? null,
+        taxPercent: sourceItem?.taxPercent ?? toTaxPercent(item.taxPercent),
+        taxAmount: amounts.taxAmount,
+        discount: amounts.discountAbs,
+        discountType: sourceItem ? "ABS" : (item.discountType ?? "ABS"),
+        salePrice:
+          item.salePrice ?? sourceItem?.salePrice ?? amounts.salePrice ?? null,
+        sellingRatesJson:
+          item.sellingRatesJson ?? sourceItem?.sellingRatesJson ?? null,
+        profit: sourceItem?.profit ?? item.profit ?? amounts.profit ?? null,
+        totalCost: amounts.totalCost,
+        billedValue: amounts.billedValue,
+        effectiveUnitValue: amounts.effectiveUnitValue,
+        batchNo: item.batchNo ?? sourceItem?.batchNo ?? null,
+        batchId: isFree ? null : (batch?.id ?? null),
+        mfgDate: item.mfgDate ?? sourceItem?.mfgDate ?? null,
+        expiryDate: item.expiryDate ?? sourceItem?.expiryDate ?? null,
+        lineNo: sourceItem?.lineNo ?? item.lineNo ?? idx + 1,
+        createdAt: now,
+        updatedAt: now,
+        isSynced: false,
+      },
+    });
+
+    savedItemCount += 1;
+  }
+
+  if (!savedItemCount) {
+    throw new Error("Enter a return quantity for at least one item.");
+  }
+
+  return totalAmount;
+}
+
 // ── CREATE PURCHASE RETURN ───────────────────────────────────────────────────
 
 export interface CreatePurchaseReturnInput {
   licenseId: string;
+  purchaseId?: string | null;
   billNo?: string | null;
   supplierId?: string | null;
   supplierName?: string | null;
@@ -167,6 +563,7 @@ export interface CreatePurchaseReturnInput {
 
 export interface PurchaseReturnItemInput {
   productId: string;
+  purchaseItemId?: string | null;
   barcode?: string | null;
   quantity: number;
   unit: string;
@@ -200,37 +597,69 @@ export async function createPurchaseReturn(
   const returnDate = header.returnDate ? new Date(header.returnDate) : now;
   const newId = uuidv4();
 
-  let totalAmount = 0;
-
   const result = await prisma.$transaction(async (tx) => {
+    let purchaseId = header.purchaseId ?? null;
+    let supplierId = header.supplierId ?? null;
+    let supplierName = header.supplierName ?? null;
+    let billNo = header.billNo ?? null;
+    let purchaseType = header.purchaseType === "CREDIT" ? "CREDIT" : "CASH";
+
+    if (purchaseId) {
+      const sourcePurchase = await tx.purchase.findFirst({
+        where: { id: purchaseId, licenseId, deletedAt: null },
+      });
+      if (!sourcePurchase) {
+        throw new Error("Source Purchase bill not found.");
+      }
+      if (!sourcePurchase.supplierId) {
+        throw new Error("The source Purchase bill does not have a supplier.");
+      }
+      if (supplierId && supplierId !== sourcePurchase.supplierId) {
+        throw new Error(
+          "The selected Purchase bill does not belong to this supplier.",
+        );
+      }
+
+      purchaseId = sourcePurchase.id;
+      supplierId = sourcePurchase.supplierId;
+      supplierName = sourcePurchase.supplierName ?? supplierName;
+      billNo =
+        sourcePurchase.billNo ??
+        billNo ??
+        `Purchase #${sourcePurchase.slNo ?? ""}`;
+      purchaseType =
+        sourcePurchase.purchaseType === "CASH" || purchaseType === "CASH"
+          ? "CASH"
+          : "CREDIT";
+    } else {
+      if (supplierId) {
+        const supplier = await tx.supplier.findFirst({
+          where: { id: supplierId, licenseId, deletedAt: null },
+        });
+        if (!supplier) {
+          throw new Error("Selected supplier was not found.");
+        }
+      }
+      if (purchaseType === "CREDIT" && !supplierId) {
+        throw new Error("Select a supplier for CREDIT Purchase Return.");
+      }
+    }
+
     const slNo = await getNextSlNo(tx, licenseId);
 
-    // Validate supplier exists if CREDIT
-    let validSupplierId: string | null = null;
-    if (header.supplierId) {
-      const sup = await tx.supplier.findFirst({
-        where: { id: header.supplierId, licenseId, deletedAt: null },
-      });
-      validSupplierId = sup ? header.supplierId : null;
-    }
-
-    if (header.purchaseType === "CREDIT" && !validSupplierId) {
-      throw new Error("Supplier is required for CREDIT returns.");
-    }
-
-    // Create header
     await tx.purchaseReturn.create({
       data: {
         id: newId,
         slNo,
         licenseId,
-        billNo: header.billNo ?? null,
-        supplierId: validSupplierId,
-        supplierName: header.supplierName ?? null,
+        purchaseId,
+        billNo,
+        supplierId,
+        supplierName,
         department: header.department ?? null,
         debitAccount: header.debitAccount ?? null,
         natureOfEntry: header.natureOfEntry ?? null,
-        purchaseType: header.purchaseType ?? "CREDIT",
+        purchaseType,
         returnDate,
         entryTime: header.entryTime
           ? new Date(header.entryTime as string)
@@ -244,121 +673,34 @@ export async function createPurchaseReturn(
       },
     });
 
-    // Process items
-    for (let idx = 0; idx < items.length; idx++) {
-      const item = items[idx];
-      const requestedQty = Number(item.quantity || 0);
-      if (requestedQty === 0) continue;
-
-      // Find batch (must exist)
-      let batch = null;
-      try {
-        batch = await resolveReturnBatch(tx, licenseId, item);
-      } catch (err) {
-        throw new Error(`Row ${idx + 1}: ${(err as Error).message}`);
-      }
-
-      const availableStock = batch.stock;
-      const appliedQty = Math.min(requestedQty, availableStock);
-      const overQty = requestedQty - appliedQty;
-
-      if (appliedQty === 0 && requestedQty > 0) {
-        throw new Error(
-          `Row ${idx + 1}: No stock available for return of this batch.`,
-        );
-      }
-
-      // Convert isFree to boolean
-      const isFree = Boolean(item.isFree);
-      const computeItem = {
-        rate: item.rate,
-        taxPercent: item.taxPercent,
-        quantity: appliedQty,
-        discountType: item.discountType,
-        discount: item.discount,
-        salePrice: item.salePrice,
-        profitPercent: item.profitPercent,
-        isFree,
-      };
-      const amounts = computeReturnAmounts(computeItem, appliedQty);
-      const {
-        taxAmount,
-        totalCost,
-        salePrice,
-        discountAbs,
-        billedValue,
-        effectiveUnitValue,
-        profit,
-      } = amounts;
-
-      totalAmount += billedValue;
-
-      // Increase stock (reverse the purchase)
-      await reverseBatchAndProductStock(
-        tx,
-        batch.id,
-        item.productId,
-        appliedQty,
-      );
-
-      // Create return item
-      await tx.purchaseReturnItem.create({
-        data: {
-          id: uuidv4(),
-          returnId: newId,
-          productId: item.productId,
-          barcode: item.barcode ?? null,
-          quantity: requestedQty,
-          appliedQuantity: appliedQty,
-          overReturnQuantity: overQty,
-          overReturnReason: overQty > 0 ? "Insufficient stock" : null,
-          unit: item.unit,
-          rate: item.rate,
-          mrp: item.mrp ?? null,
-          taxPercent: toTaxPercent(item.taxPercent),
-          taxAmount,
-          discount: discountAbs,
-          discountType: item.discountType ?? "ABS",
-          salePrice: salePrice ?? null,
-          sellingRatesJson: item.sellingRatesJson ?? null,
-          profit: profit ?? null,
-          totalCost,
-          billedValue,
-          effectiveUnitValue,
-          batchNo: batch.batchNo,
-          batchId: batch.id,
-          mfgDate: item.mfgDate ?? null,
-          expiryDate: item.expiryDate ?? null,
-          lineNo: item.lineNo ?? idx + 1,
-          createdAt: now,
-          updatedAt: now,
-          isSynced: false,
-        },
-      });
-    }
+    const totalAmount = await writePurchaseReturnItems(tx, {
+      licenseId,
+      returnId: newId,
+      purchaseId,
+      items,
+      now,
+      excludeReturnId: null,
+    });
 
     const grandAmount = Math.max(0, totalAmount - (header.discount ?? 0));
 
-    // Update header totalAmount
     await tx.purchaseReturn.update({
       where: { id: newId },
       data: { totalAmount, updatedAt: now },
     });
 
-    // Ledger entries (opposite sign compared to purchase)
-    if (header.purchaseType === "CREDIT" && validSupplierId) {
-      // We owe the supplier less -> negative amount (we receive money)
+    if (purchaseType === "CREDIT" && supplierId) {
       await tx.supplierTransaction.create({
         data: {
           id: uuidv4(),
           licenseId,
-          supplierId: validSupplierId,
+          supplierId,
           kind: "RETURN",
           refId: newId,
-          refNo: header.billNo ?? null,
+          refNo: billNo,
           date: returnDate,
           amount: grandAmount,
-          sign: -1, // decreases payable
+          sign: -1,
           notes: "Purchase Return",
           createdAt: now,
           updatedAt: now,
@@ -367,15 +709,14 @@ export async function createPurchaseReturn(
       });
     }
 
-    if (header.purchaseType === "CASH") {
-      // Cash inflow (positive sign for cash transactions)
+    if (purchaseType === "CASH") {
       await tx.cashTransaction.create({
         data: {
           id: uuidv4(),
           licenseId,
           kind: "RECEIPT",
           refId: newId,
-          refNo: header.billNo ?? null,
+          refNo: billNo,
           date: returnDate,
           amount: grandAmount,
           sign: 1,
@@ -407,135 +748,99 @@ export async function updatePurchaseReturn(
     const existing = (await tx.purchaseReturn.findFirst({
       where: { id, licenseId },
       include: { items: { where: { deletedAt: null } } },
-    })) as any; // type assertion to avoid missing items property
+    })) as any;
 
     if (!existing) throw new Error("Purchase return not found");
 
-    // Reverse stock from current items (add back the previously returned stock)
-    for (const it of existing.items) {
-      const applied = it.appliedQuantity ?? it.quantity;
-      if (applied > 0 && it.batchId) {
-        // Negative delta because we are undoing the return (removing stock)
-        await reverseBatchAndProductStock(
-          tx,
-          it.batchId,
-          it.productId,
-          -applied,
+    let purchaseId = header.purchaseId ?? existing.purchaseId ?? null;
+    let supplierId = header.supplierId ?? existing.supplierId ?? null;
+    let supplierName = header.supplierName ?? existing.supplierName ?? null;
+    let billNo = header.billNo ?? existing.billNo ?? null;
+    let purchaseType =
+      header.purchaseType === "CREDIT"
+        ? "CREDIT"
+        : header.purchaseType === "CASH"
+          ? "CASH"
+          : existing.purchaseType;
+
+    if (purchaseId) {
+      const sourcePurchase = await tx.purchase.findFirst({
+        where: { id: purchaseId, licenseId, deletedAt: null },
+      });
+      if (!sourcePurchase) {
+        throw new Error("Source Purchase bill not found.");
+      }
+      if (!sourcePurchase.supplierId) {
+        throw new Error("The source Purchase bill does not have a supplier.");
+      }
+      if (supplierId && supplierId !== sourcePurchase.supplierId) {
+        throw new Error(
+          "The selected Purchase bill does not belong to this supplier.",
         );
       }
+
+      purchaseId = sourcePurchase.id;
+      supplierId = sourcePurchase.supplierId;
+      supplierName = sourcePurchase.supplierName ?? supplierName;
+      billNo =
+        sourcePurchase.billNo ??
+        billNo ??
+        `Purchase #${sourcePurchase.slNo ?? ""}`;
+      purchaseType =
+        sourcePurchase.purchaseType === "CASH" || purchaseType === "CASH"
+          ? "CASH"
+          : "CREDIT";
+    } else {
+      if (supplierId) {
+        const supplier = await tx.supplier.findFirst({
+          where: { id: supplierId, licenseId, deletedAt: null },
+        });
+        if (!supplier) {
+          throw new Error("Selected supplier was not found.");
+        }
+      }
+      if (purchaseType === "CREDIT" && !supplierId) {
+        throw new Error("Select a supplier for CREDIT Purchase Return.");
+      }
     }
 
-    // Delete old items
+    for (const item of existing.items) {
+      const applied = Number(item.appliedQuantity ?? item.quantity ?? 0);
+      if (applied <= 0 || item.isFree) continue;
+      if (item.batchId) {
+        await reverseBatchAndProductStock(
+          tx,
+          item.batchId,
+          item.productId,
+          applied,
+        );
+      } else {
+        await adjustLegacyProductStock(tx, item.productId, applied);
+      }
+    }
+
     await tx.purchaseReturnItem.deleteMany({ where: { returnId: id } });
 
-    // Validate supplier
-    let validSupplierId: string | null = null;
-    const supplierId = header.supplierId ?? existing.supplierId ?? null;
-    if (supplierId) {
-      const sup = await tx.supplier.findFirst({
-        where: { id: supplierId, licenseId, deletedAt: null },
-      });
-      validSupplierId = sup ? supplierId : null;
-    }
+    const totalAmount = await writePurchaseReturnItems(tx, {
+      licenseId,
+      returnId: id,
+      purchaseId,
+      items,
+      now,
+      excludeReturnId: id,
+    });
+    const grandAmount = Math.max(
+      0,
+      totalAmount - (header.discount ?? existing.discount ?? 0),
+    );
 
-    let totalAmount = 0;
-
-    // Process updated items
-    for (let idx = 0; idx < items.length; idx++) {
-      const item = items[idx];
-      const requestedQty = Number(item.quantity || 0);
-      if (requestedQty === 0) continue;
-
-      let batch = null;
-      try {
-        batch = await resolveReturnBatch(tx, licenseId, item);
-      } catch (err) {
-        throw new Error(`Row ${idx + 1}: ${(err as Error).message}`);
-      }
-
-      const availableStock = batch.stock;
-      const appliedQty = Math.min(requestedQty, availableStock);
-      const overQty = requestedQty - appliedQty;
-
-      if (appliedQty === 0 && requestedQty > 0) {
-        throw new Error(`Row ${idx + 1}: No stock available for return.`);
-      }
-
-      const isFree = Boolean(item.isFree);
-      const computeItem = {
-        rate: item.rate,
-        taxPercent: item.taxPercent,
-        quantity: appliedQty,
-        discountType: item.discountType,
-        discount: item.discount,
-        salePrice: item.salePrice,
-        profitPercent: item.profitPercent,
-        isFree,
-      };
-      const amounts = computeReturnAmounts(computeItem, appliedQty);
-      const {
-        taxAmount,
-        totalCost,
-        salePrice,
-        discountAbs,
-        billedValue,
-        effectiveUnitValue,
-        profit,
-      } = amounts;
-
-      totalAmount += billedValue;
-
-      await reverseBatchAndProductStock(
-        tx,
-        batch.id,
-        item.productId,
-        appliedQty,
-      );
-
-      await tx.purchaseReturnItem.create({
-        data: {
-          id: uuidv4(),
-          returnId: id,
-          productId: item.productId,
-          barcode: item.barcode ?? null,
-          quantity: requestedQty,
-          appliedQuantity: appliedQty,
-          overReturnQuantity: overQty,
-          overReturnReason: overQty > 0 ? "Insufficient stock" : null,
-          unit: item.unit,
-          rate: item.rate,
-          mrp: item.mrp ?? null,
-          taxPercent: toTaxPercent(item.taxPercent),
-          taxAmount,
-          discount: discountAbs,
-          discountType: item.discountType ?? "ABS",
-          salePrice: salePrice ?? null,
-          sellingRatesJson: item.sellingRatesJson ?? null,
-          profit: profit ?? null,
-          totalCost,
-          billedValue,
-          effectiveUnitValue,
-          batchNo: batch.batchNo,
-          batchId: batch.id,
-          mfgDate: item.mfgDate ?? null,
-          expiryDate: item.expiryDate ?? null,
-          lineNo: item.lineNo ?? idx + 1,
-          createdAt: now,
-          updatedAt: now,
-          isSynced: false,
-        },
-      });
-    }
-
-    const grandAmount = Math.max(0, totalAmount - (header.discount ?? 0));
-
-    // Update header
     await tx.purchaseReturn.update({
       where: { id },
       data: {
-        billNo: header.billNo ?? existing.billNo,
-        supplierId: validSupplierId,
-        supplierName: header.supplierName ?? existing.supplierName,
+        purchaseId,
+        billNo,
+        supplierId,
+        supplierName,
         department: header.department ?? existing.department,
         debitAccount: header.debitAccount ?? existing.debitAccount,
         natureOfEntry: header.natureOfEntry ?? existing.natureOfEntry,
@@ -547,14 +852,13 @@ export async function updatePurchaseReturn(
           : existing.entryTime,
         discount: header.discount ?? existing.discount,
         totalAmount,
-        purchaseType: header.purchaseType ?? (existing.purchaseType as any),
+        purchaseType,
         updatedAt: now,
         isSynced: false,
-        typeId: header.typeId ?? null,
+        typeId: header.typeId ?? existing.typeId ?? null,
       },
     });
 
-    // Delete old ledger entries
     await tx.supplierTransaction.deleteMany({
       where: { licenseId, kind: "RETURN", refId: id },
     });
@@ -562,21 +866,20 @@ export async function updatePurchaseReturn(
       where: { licenseId, kind: "RECEIPT", refId: id },
     });
 
-    // Recreate ledger
-    const purchaseType = header.purchaseType ?? existing.purchaseType;
+    const txDate = header.returnDate
+      ? new Date(header.returnDate as string)
+      : existing.returnDate;
 
-    if (purchaseType === "CREDIT" && validSupplierId) {
+    if (purchaseType === "CREDIT" && supplierId) {
       await tx.supplierTransaction.create({
         data: {
           id: uuidv4(),
           licenseId,
-          supplierId: validSupplierId,
+          supplierId,
           kind: "RETURN",
           refId: id,
-          refNo: header.billNo ?? existing.billNo,
-          date: header.returnDate
-            ? new Date(header.returnDate as string)
-            : existing.returnDate,
+          refNo: billNo,
+          date: txDate,
           amount: grandAmount,
           sign: -1,
           notes: "Purchase Return",
@@ -594,10 +897,8 @@ export async function updatePurchaseReturn(
           licenseId,
           kind: "RECEIPT",
           refId: id,
-          refNo: header.billNo ?? existing.billNo,
-          date: header.returnDate
-            ? new Date(header.returnDate as string)
-            : existing.returnDate,
+          refNo: billNo,
+          date: txDate,
           amount: grandAmount,
           sign: 1,
           notes: "Purchase Return (Cash)",
@@ -625,17 +926,20 @@ export async function deletePurchaseReturn(licenseId: string, id: string) {
     })) as any;
     if (!p) throw new Error("Purchase return not found");
 
-    // Reverse stock effect (remove the stock that was added by this return)
+    // Reverse the Purchase Return stock effect using the batch/product
+    // that was actually saved on the Return item.
     for (const it of p.items) {
-      const applied = it.appliedQuantity ?? it.quantity;
-      if (applied > 0 && it.batchId) {
-        // we need to decrease the stock by the same amount
+      const applied = Number(it.appliedQuantity ?? it.quantity ?? 0);
+      if (applied <= 0 || it.isFree) continue;
+      if (it.batchId) {
         await reverseBatchAndProductStock(
           tx,
           it.batchId,
           it.productId,
-          -applied,
+          applied,
         );
+      } else {
+        await adjustLegacyProductStock(tx, it.productId, applied);
       }
     }
 
@@ -707,6 +1011,7 @@ export async function listPurchaseReturns(
       select: {
         id: true,
         slNo: true,
+        purchaseId: true,
         billNo: true,
         supplierId: true,
         supplierName: true,
