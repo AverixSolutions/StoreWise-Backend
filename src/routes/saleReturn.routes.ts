@@ -7,6 +7,7 @@ import {
   deleteSaleReturn,
   listSaleReturns,
   getSaleReturnFull,
+  getSaleReturnSource,
   peekNextSaleReturnSlNo,
 } from "../services/saleReturn.service";
 
@@ -14,7 +15,7 @@ const router = Router();
 
 router.use(verifyToken);
 
-// ── License guard helpers ─────────────────────────────────────────────────────
+// â”€â”€ License guard helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function getLicenseId(req: Request): string {
   return (req as any).user?.licenseId ?? "";
@@ -28,7 +29,7 @@ function guardLicense(req: Request, res: Response, licenseId: string): boolean {
   return true;
 }
 
-// ── Static / special paths ───────────────────────────────────────────────────
+// â”€â”€ Static / special paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // GET /api/sale-returns/next-slno?licenseId=xxx
 router.get("/next-slno", async (req: Request, res: Response) => {
@@ -42,7 +43,23 @@ router.get("/next-slno", async (req: Request, res: Response) => {
   }
 });
 
-// ── Root list ────────────────────────────────────────────────────────────────
+// â”€â”€ Root list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// GET /api/sale-returns/source/:saleId?excludeReturnId=...
+router.get("/source/:saleId", async (req: Request, res: Response) => {
+  const licenseId = getLicenseId(req);
+  try {
+    const result = await getSaleReturnSource(
+      licenseId,
+      req.params.saleId,
+      (req.query.excludeReturnId as string) || null,
+    );
+    if (!result.success) return res.status(404).json(result);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed" });
+  }
+});
 
 // GET /api/sale-returns?licenseId=xxx&q=&customerId=&dateFrom=&dateTo=&page=&pageSize=
 router.get("/", async (req: Request, res: Response) => {
@@ -64,7 +81,7 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-// ── Dynamic :id routes ───────────────────────────────────────────────────────
+// â”€â”€ Dynamic :id routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // GET /api/sale-returns/:id
 router.get("/:id", async (req: Request, res: Response) => {
@@ -95,7 +112,9 @@ router.post("/", async (req: Request, res: Response) => {
   } catch (err: any) {
     const msg = err.message || "Failed";
     const status =
-      msg.includes("Customer") || msg.includes("stock") ? 400 : 500;
+      msg.includes("Customer") || msg.includes("Row") || msg.includes("Sale")
+        ? 400
+        : 500;
     res.status(status).json({ success: false, error: msg });
   }
 });

@@ -26,26 +26,26 @@ model User {
 }
 
 model License {
-  id                 String             @id
+  id                 String               @id
   name               String
-  maxUsers           Int                @default(1)
+  maxUsers           Int                  @default(1)
   activeUntil        DateTime
-  isActive           Boolean            @default(true)
-  saleType           SaleType           @default(DIRECT)
+  isActive           Boolean              @default(true)
+  saleType           SaleType             @default(DIRECT)
   customerName       String
   customerPhone      String
-  amountPaid         Decimal            @db.Decimal(10, 2)
+  amountPaid         Decimal              @db.Decimal(10, 2)
   franchiseId        String?
-  marginForUs        Decimal            @db.Decimal(10, 2)
-  marginForFranchise Decimal            @db.Decimal(10, 2)
-  tier               LicenseTier        @default(PRO)
-  barcodeEnabled     Boolean            @default(true)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  marginForUs        Decimal              @db.Decimal(10, 2)
+  marginForFranchise Decimal              @db.Decimal(10, 2)
+  tier               LicenseTier          @default(PRO)
+  barcodeEnabled     Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
   categories         Category[]
   brands             Brand[]
   customers          Customer[]
-  franchise          Franchise?         @relation(fields: [franchiseId], references: [id])
+  franchise          Franchise?           @relation(fields: [franchiseId], references: [id])
   roleLimits         LicenseRoleLimit[]
   products           Product[]
   purchases          Purchase[]
@@ -211,25 +211,25 @@ model ProductBatchRate {
 }
 
 model ProductBatch {
-  id                       String    @id @default(uuid())
+  id                       String             @id @default(uuid())
   licenseId                String
   productId                String
   barcode                  String?
-  mrp                      Decimal?  @db.Decimal(10, 2)
-  salePrice                Decimal?  @db.Decimal(10, 2)
-  costPrice                Decimal?  @db.Decimal(10, 2)
+  mrp                      Decimal?           @db.Decimal(10, 2)
+  salePrice                Decimal?           @db.Decimal(10, 2)
+  costPrice                Decimal?           @db.Decimal(10, 2)
   batchNo                  String?
   purchaseBatchNo          String?
   purchaseId               String?
   mfgDate                  String?
   expiryDate               String?
   receivedAt               DateTime?
-  stock                    Int       @default(0)
-  isSystemGeneratedBarcode Boolean   @default(false)
+  stock                    Int                @default(0)
+  isSystemGeneratedBarcode Boolean            @default(false)
   createdAt                DateTime?
   updatedAt                DateTime?
   deletedAt                DateTime?
-  product                  Product   @relation(fields: [productId], references: [id])
+  product                  Product            @relation(fields: [productId], references: [id])
   rates                    ProductBatchRate[]
 
   @@index([productId, deletedAt])
@@ -248,7 +248,7 @@ model Category {
   updatedAt DateTime?
   deletedAt DateTime?
   isSynced  Boolean    @default(false)
-  syncedAt  DateTime? // ← ADD
+  syncedAt  DateTime? // â† ADD
   parent    Category?  @relation("CategoryParent", fields: [parentId], references: [id])
   children  Category[] @relation("CategoryParent")
   license   License    @relation(fields: [licenseId], references: [id])
@@ -302,6 +302,7 @@ model Purchase {
   supplier                Supplier?                @relation(fields: [supplierId], references: [id])
   user                    User?                    @relation(fields: [userId], references: [id])
   items                   PurchaseItem[]
+  returns                 PurchaseReturn[]
   supplierBillSettlements SupplierBillSettlement[]
 
   @@unique([licenseId, slNo])
@@ -311,38 +312,39 @@ model Purchase {
 }
 
 model PurchaseItem {
-  id                 String     @id @default(uuid())
+  id                 String               @id @default(uuid())
   purchaseId         String
   productId          String
   barcode            String?
   quantity           Int
   unit               String
-  rate               Decimal    @db.Decimal(10, 2)
-  mrp                Decimal?   @db.Decimal(10, 2)
+  rate               Decimal              @db.Decimal(10, 2)
+  mrp                Decimal?             @db.Decimal(10, 2)
   taxPercent         TaxPercent
-  taxAmount          Decimal    @db.Decimal(10, 2)
-  discount           Decimal?   @db.Decimal(10, 2)
+  taxAmount          Decimal              @db.Decimal(10, 2)
+  discount           Decimal?             @db.Decimal(10, 2)
   discountType       String?
-  salePrice          Decimal?   @db.Decimal(10, 2)
+  salePrice          Decimal?             @db.Decimal(10, 2)
   sellingRatesJson   String?
-  profit             Decimal?   @db.Decimal(10, 2)
-  totalCost          Decimal    @db.Decimal(10, 2)
-  billedValue        Decimal?   @db.Decimal(10, 2)
+  profit             Decimal?             @db.Decimal(10, 2)
+  totalCost          Decimal              @db.Decimal(10, 2)
+  billedValue        Decimal?             @db.Decimal(10, 2)
   batchNo            String?
   batchId            String?
   purchaseBatchNo    String?
   mfgDate            String?
   expiryDate         String?
   lineNo             Int?
-  isFree             Boolean    @default(false)
-  effectiveUnitValue Decimal?   @db.Decimal(10, 2)
+  isFree             Boolean              @default(false)
+  effectiveUnitValue Decimal?             @db.Decimal(10, 2)
   createdAt          DateTime?
-  updatedAt          DateTime   @default(now())
+  updatedAt          DateTime             @default(now())
   deletedAt          DateTime?
-  isSynced           Boolean    @default(false)
+  isSynced           Boolean              @default(false)
   syncedAt           DateTime?
-  product            Product    @relation(fields: [productId], references: [id])
-  purchase           Purchase   @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product            Product              @relation(fields: [productId], references: [id])
+  purchase           Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  returnItems        PurchaseReturnItem[]
 
   @@index([purchaseId, lineNo])
   @@index([batchId])
@@ -355,6 +357,7 @@ model PurchaseReturn {
   userId        String?
   licenseId     String
   supplierId    String?
+  purchaseId    String?
   typeId        String?
   type          TransactionType?     @relation(fields: [typeId], references: [id])
   supplierName  String?
@@ -373,16 +376,19 @@ model PurchaseReturn {
   isSynced      Boolean              @default(false)
   syncedAt      DateTime?
   license       License              @relation(fields: [licenseId], references: [id])
+  purchase      Purchase?            @relation(fields: [purchaseId], references: [id])
   items         PurchaseReturnItem[]
 
   @@unique([licenseId, slNo])
   @@index([licenseId, returnDate])
   @@index([licenseId, supplierId])
+  @@index([licenseId, purchaseId])
 }
 
 model PurchaseReturnItem {
   id                 String         @id @default(uuid())
   returnId           String
+  purchaseItemId     String?
   productId          String
   barcode            String?
   quantity           Int
@@ -414,7 +420,10 @@ model PurchaseReturnItem {
   isSynced           Boolean        @default(false)
   syncedAt           DateTime?
   purchaseReturn     PurchaseReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  purchaseItem       PurchaseItem?  @relation(fields: [purchaseItemId], references: [id])
   product            Product        @relation(fields: [productId], references: [id])
+
+  @@index([purchaseItemId])
 }
 
 model PurchaseHold {
@@ -483,6 +492,7 @@ model Sale {
   license                 License                  @relation(fields: [licenseId], references: [id])
   user                    User?                    @relation(fields: [userId], references: [id])
   items                   SaleItem[]
+  returns                 SaleReturn[]
   customerBillSettlements CustomerBillSettlement[]
 
   @@unique([licenseId, slNo])
@@ -492,48 +502,49 @@ model Sale {
 }
 
 model SaleItem {
-  id                 String     @id @default(uuid())
-  saleId             String
-  productId          String
-  barcode            String?
-  quantity           Int
-  unit               String
-  rate               Decimal    @db.Decimal(10, 2)
-  mrp                Decimal?   @db.Decimal(10, 2)
-  taxPercent         TaxPercent
-  taxAmount          Decimal    @db.Decimal(10, 2)
-  discount           Decimal?   @db.Decimal(10, 2)
-  discountType       String?
-  salePrice          Decimal?   @db.Decimal(10, 2)
-  rateTypeId         String?
-  rateTypeCode       String?
-  rateTypeName       String?
-  rateSource         String?    @default("LEGACY")
-  profit             Decimal?   @db.Decimal(10, 2)
-  totalCost          Decimal    @db.Decimal(10, 2)
-  billedValue        Decimal?   @db.Decimal(10, 2)
-  batchNo            String?
-  batchId            String?
-  mfgDate            String?
-  expiryDate         String?
-  lineNo             Int?
-  effectiveUnitValue Decimal?   @db.Decimal(10, 2)
-  isFree             Boolean    @default(false)
-  originalRate       Decimal?   @db.Decimal(10, 2)
-  originalSalePrice  Decimal?   @db.Decimal(10, 2)
-  appliedRate        Decimal?   @db.Decimal(10, 2)
-  offerId            String?
-  offerName          String?
-  offerType          String?
-  offerDiscountAmount Decimal?  @db.Decimal(10, 2)
-  offerMeta          String?
-  createdAt          DateTime?
-  updatedAt          DateTime?
-  deletedAt          DateTime?
-  isSynced           Boolean    @default(false)
-  syncedAt           DateTime?
-  product            Product    @relation(fields: [productId], references: [id])
-  sale               Sale       @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  id                  String     @id @default(uuid())
+  saleId              String
+  productId           String
+  barcode             String?
+  quantity            Int
+  unit                String
+  rate                Decimal    @db.Decimal(10, 2)
+  mrp                 Decimal?   @db.Decimal(10, 2)
+  taxPercent          TaxPercent
+  taxAmount           Decimal    @db.Decimal(10, 2)
+  discount            Decimal?   @db.Decimal(10, 2)
+  discountType        String?
+  salePrice           Decimal?   @db.Decimal(10, 2)
+  rateTypeId          String?
+  rateTypeCode        String?
+  rateTypeName        String?
+  rateSource          String?    @default("LEGACY")
+  profit              Decimal?   @db.Decimal(10, 2)
+  totalCost           Decimal    @db.Decimal(10, 2)
+  billedValue         Decimal?   @db.Decimal(10, 2)
+  batchNo             String?
+  batchId             String?
+  mfgDate             String?
+  expiryDate          String?
+  lineNo              Int?
+  effectiveUnitValue  Decimal?   @db.Decimal(10, 2)
+  isFree              Boolean    @default(false)
+  originalRate        Decimal?   @db.Decimal(10, 2)
+  originalSalePrice   Decimal?   @db.Decimal(10, 2)
+  appliedRate         Decimal?   @db.Decimal(10, 2)
+  offerId             String?
+  offerName           String?
+  offerType           String?
+  offerDiscountAmount Decimal?   @db.Decimal(10, 2)
+  offerMeta           String?
+  createdAt           DateTime?
+  updatedAt           DateTime?
+  deletedAt           DateTime?
+  isSynced            Boolean    @default(false)
+  syncedAt            DateTime?
+  product             Product          @relation(fields: [productId], references: [id])
+  sale                Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  returnItems         SaleReturnItem[]
 
   @@index([saleId, lineNo])
   @@index([batchId])
@@ -541,43 +552,43 @@ model SaleItem {
 }
 
 model Offer {
-  id                String               @id @default(uuid())
-  licenseId         String
-  name              String
-  type              String
-  isActive          Boolean              @default(true)
-  applyScope        String               @default("ALL_PRODUCTS")
-  priority          Int                  @default(0)
-  startsAt          DateTime?
-  endsAt            DateTime?
-  timeStart         String?
-  timeEnd           String?
-  minQty            Decimal?             @db.Decimal(10, 2)
-  maxQty            Decimal?             @db.Decimal(10, 2)
-  fixedUnitPrice    Decimal?             @db.Decimal(10, 2)
-  discountPercent   Decimal?             @db.Decimal(10, 2)
-  discountAmount    Decimal?             @db.Decimal(10, 2)
-  triggerKind       String?
-  triggerScope      String?
-  minAmount         Decimal?             @db.Decimal(10, 2)
-  maxAmount         Decimal?             @db.Decimal(10, 2)
-  unit              String?
-  benefitTarget     String?
-  benefitKind       String?
-  benefitQtyMode    String?
-  fixedBenefitQty   Decimal?             @db.Decimal(10, 2)
-  maxBenefitQty     Decimal?             @db.Decimal(10, 2)
-  maxBenefitAmount  Decimal?             @db.Decimal(10, 2)
-  customerRequired  Boolean              @default(false)
-  oncePerBill       Boolean              @default(true)
-  notes             String?
-  createdAt         DateTime?
-  updatedAt         DateTime?
-  deletedAt         DateTime?
-  isSynced          Boolean              @default(false)
-  syncedAt          DateTime?
-  license           License              @relation(fields: [licenseId], references: [id])
-  targets           OfferTargetProduct[]
+  id               String               @id @default(uuid())
+  licenseId        String
+  name             String
+  type             String
+  isActive         Boolean              @default(true)
+  applyScope       String               @default("ALL_PRODUCTS")
+  priority         Int                  @default(0)
+  startsAt         DateTime?
+  endsAt           DateTime?
+  timeStart        String?
+  timeEnd          String?
+  minQty           Decimal?             @db.Decimal(10, 2)
+  maxQty           Decimal?             @db.Decimal(10, 2)
+  fixedUnitPrice   Decimal?             @db.Decimal(10, 2)
+  discountPercent  Decimal?             @db.Decimal(10, 2)
+  discountAmount   Decimal?             @db.Decimal(10, 2)
+  triggerKind      String?
+  triggerScope     String?
+  minAmount        Decimal?             @db.Decimal(10, 2)
+  maxAmount        Decimal?             @db.Decimal(10, 2)
+  unit             String?
+  benefitTarget    String?
+  benefitKind      String?
+  benefitQtyMode   String?
+  fixedBenefitQty  Decimal?             @db.Decimal(10, 2)
+  maxBenefitQty    Decimal?             @db.Decimal(10, 2)
+  maxBenefitAmount Decimal?             @db.Decimal(10, 2)
+  customerRequired Boolean              @default(false)
+  oncePerBill      Boolean              @default(true)
+  notes            String?
+  createdAt        DateTime?
+  updatedAt        DateTime?
+  deletedAt        DateTime?
+  isSynced         Boolean              @default(false)
+  syncedAt         DateTime?
+  license          License              @relation(fields: [licenseId], references: [id])
+  targets          OfferTargetProduct[]
 
   @@index([licenseId, type, isActive])
   @@index([isSynced])
@@ -614,6 +625,7 @@ model SaleReturn {
   slNo          Int?
   userId        String?
   licenseId     String
+  saleId        String?
   customerId    String?
   typeId        String?
   type          TransactionType? @relation(fields: [typeId], references: [id])
@@ -633,15 +645,18 @@ model SaleReturn {
   isSynced      Boolean          @default(false)
   syncedAt      DateTime?
   license       License          @relation(fields: [licenseId], references: [id])
+  sale          Sale?            @relation(fields: [saleId], references: [id], onDelete: SetNull)
   items         SaleReturnItem[]
 
   @@unique([licenseId, slNo])
   @@index([licenseId, returnDate])
+  @@index([licenseId, saleId])
 }
 
 model SaleReturnItem {
   id                 String     @id @default(uuid())
   returnId           String
+  saleItemId         String?
   productId          String
   barcode            String?
   quantity           Int
@@ -675,9 +690,11 @@ model SaleReturnItem {
   isSynced           Boolean    @default(false)
   syncedAt           DateTime?
   saleReturn         SaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItem           SaleItem?  @relation(fields: [saleItemId], references: [id], onDelete: SetNull)
 
   @@index([returnId, lineNo])
   @@index([batchId])
+  @@index([saleItemId])
 }
 
 model SaleHold {

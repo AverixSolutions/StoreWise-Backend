@@ -21,11 +21,11 @@ export type SyncableModel =
   | "saleHold"
   | "purchaseHold"
   | "transactionType"
-  | "purchaseReturn" // ← added
-  | "purchaseReturnItem" // ← added
-  | "purchaseReturnHold" // ← added
-  | "saleReturn" // ← added
-  | "saleReturnItem" // ← added
+  | "purchaseReturn" // â† added
+  | "purchaseReturnItem" // â† added
+  | "purchaseReturnHold" // â† added
+  | "saleReturn" // â† added
+  | "saleReturnItem" // â† added
   | "quotation"
   | "quotationItem"
   | "offer"
@@ -34,7 +34,7 @@ export type SyncableModel =
   | "productRate"
   | "productBatchRate";
 
-// ── Field allow-lists ─────────────────────────────────────────────────────────
+// â”€â”€ Field allow-lists â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const PRODUCT_FIELDS = [
   "licenseId",
@@ -211,7 +211,7 @@ const UNIT_FIELDS = [
   "syncedAt",
 ];
 const PURCHASE_FIELDS = [
-  // NOTE: userId intentionally excluded — desktop userId is not a Neon UUID
+  // NOTE: userId intentionally excluded â€” desktop userId is not a Neon UUID
   "slNo",
   "billNo",
   "licenseId",
@@ -233,7 +233,7 @@ const PURCHASE_FIELDS = [
   "syncedAt",
 ];
 const PURCHASE_ITEM_FIELDS = [
-  // NOTE: no licenseId — PurchaseItem doesn't have that column in Neon
+  // NOTE: no licenseId â€” PurchaseItem doesn't have that column in Neon
   "purchaseId",
   "productId",
   "barcode",
@@ -375,7 +375,7 @@ const TRANSACTION_TYPE_FIELDS = [
   "syncedAt",
 ];
 
-// ← added
+// â† added
 const PURCHASE_RETURN_FIELDS = [
   "slNo",
   "billNo",
@@ -398,7 +398,7 @@ const PURCHASE_RETURN_FIELDS = [
   "syncedAt",
 ];
 
-// ← added
+// â† added
 const PURCHASE_RETURN_ITEM_FIELDS = [
   "returnId",
   "productId",
@@ -432,9 +432,10 @@ const PURCHASE_RETURN_ITEM_FIELDS = [
   "syncedAt",
 ];
 
-// ← added
+// â† added
 const SALE_RETURN_FIELDS = [
   "slNo",
+  "saleId",
   "billNo",
   "userId",
   "licenseId",
@@ -456,9 +457,10 @@ const SALE_RETURN_FIELDS = [
   "syncedAt",
 ];
 
-// ← added
+// â† added
 const SALE_RETURN_ITEM_FIELDS = [
   "returnId",
+  "saleItemId",
   "productId",
   "barcode",
   "quantity",
@@ -493,7 +495,7 @@ const SALE_RETURN_ITEM_FIELDS = [
   "syncedAt",
 ];
 
-// ← added
+// â† added
 const QUOTATION_FIELDS = [
   "slNo",
   "quotationNo",
@@ -631,7 +633,7 @@ const PURCHASE_RETURN_HOLD_FIELDS = [
   "syncedAt",
 ];
 
-// ── Registry ──────────────────────────────────────────────────────────────────
+// â”€â”€ Registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   product: PRODUCT_FIELDS,
@@ -649,11 +651,11 @@ const ENTITY_FIELDS: Partial<Record<SyncableModel, string[]>> = {
   saleHold: SALE_HOLD_FIELDS,
   purchaseHold: PURCHASE_HOLD_FIELDS,
   transactionType: TRANSACTION_TYPE_FIELDS,
-  purchaseReturn: PURCHASE_RETURN_FIELDS, // ← added
-  purchaseReturnItem: PURCHASE_RETURN_ITEM_FIELDS, // ← added
-  purchaseReturnHold: PURCHASE_RETURN_HOLD_FIELDS, // ← added
-  saleReturn: SALE_RETURN_FIELDS, // ← added
-  saleReturnItem: SALE_RETURN_ITEM_FIELDS, // ← added
+  purchaseReturn: PURCHASE_RETURN_FIELDS, // â† added
+  purchaseReturnItem: PURCHASE_RETURN_ITEM_FIELDS, // â† added
+  purchaseReturnHold: PURCHASE_RETURN_HOLD_FIELDS, // â† added
+  saleReturn: SALE_RETURN_FIELDS, // â† added
+  saleReturnItem: SALE_RETURN_ITEM_FIELDS, // â† added
   quotation: QUOTATION_FIELDS,
   quotationItem: QUOTATION_ITEM_FIELDS,
   cashTransaction: CASH_TRANSACTION_FIELDS,
@@ -680,17 +682,17 @@ const COMPOSITE_CODE_ENTITIES: SyncableModel[] = ["unit", "taxCategory"];
 const COMPOSITE_HOLD_ENTITIES: SyncableModel[] = [
   "saleHold",
   "purchaseHold",
-  "purchaseReturnHold", // ← added
+  "purchaseReturnHold", // â† added
 ];
 
-// Entities where the Prisma model has no licenseId column — can't use generic
+// Entities where the Prisma model has no licenseId column â€” can't use generic
 // licenseId-based select or FK guard
 const NO_LICENSE_ID_ENTITIES: SyncableModel[] = [
   "purchaseItem",
   "saleItem",
   "quotationItem",
   "purchaseReturnItem",
-  "saleReturnItem", // ← added
+  "saleReturnItem", // â† added
 ];
 
 const NO_SYNC_STATUS_ENTITIES: SyncableModel[] = ["productBatch"];
@@ -699,7 +701,7 @@ function hasSyncStatusFields(entity: SyncableModel): boolean {
   return !NO_SYNC_STATUS_ENTITIES.includes(entity);
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function stripFields(entity: SyncableModel, data: Record<string, any>) {
   const allowed = ENTITY_FIELDS[entity];
@@ -779,7 +781,7 @@ function getUpsertWhere(
   return { id: data.id };
 }
 
-// ── Push ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Push â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type PushRecord = {
   id: string;
@@ -798,7 +800,7 @@ export async function handlePush(
   entity: SyncableModel,
   licenseId: string,
   records: PushRecord[],
-  cloudUserId?: string, // ✅ 4th parameter — cloud user UUID injected into sale records
+  cloudUserId?: string, // âœ… 4th parameter â€” cloud user UUID injected into sale records
 ): Promise<PushResult[]> {
   const serverNow = new Date().toISOString();
   const isShopSettings = entity === "shopSettings";
@@ -810,14 +812,13 @@ export async function handlePush(
   const isSaleReturnItem = entity === "saleReturnItem";
   const isQuotationItem = entity === "quotationItem";
   const isRateType = entity === "rateType";
-  const isRateValue =
-    entity === "productRate" || entity === "productBatchRate";
+  const isRateValue = entity === "productRate" || entity === "productBatchRate";
   const noLicenseId = NO_LICENSE_ID_ENTITIES.includes(entity);
   const hasSyncStatus = hasSyncStatusFields(entity);
   const results: PushResult[] = [];
   const prismaModelName = getPrismaModelName(entity);
 
-  // ── purchaseItem: skip records whose parent purchase doesn't exist yet ──────
+  // â”€â”€ purchaseItem: skip records whose parent purchase doesn't exist yet â”€â”€â”€â”€â”€â”€
   let validRecords = records;
   if (isPurchaseItem) {
     const purchaseIds = [
@@ -838,7 +839,7 @@ export async function handlePush(
     });
   }
 
-  // ── saleItem: skip records whose parent sale doesn't exist yet ──────
+  // â”€â”€ saleItem: skip records whose parent sale doesn't exist yet â”€â”€â”€â”€â”€â”€
   if (isSaleItem) {
     const saleIds = [...new Set(records.map((r) => r.saleId).filter(Boolean))];
     const existingSales = await prisma.sale.findMany({
@@ -856,7 +857,7 @@ export async function handlePush(
     });
   }
 
-  // ← added: purchaseReturnItem: skip records whose parent purchaseReturn doesn't exist yet
+  // â† added: purchaseReturnItem: skip records whose parent purchaseReturn doesn't exist yet
   if (isPurchaseReturnItem) {
     const returnIds = [
       ...new Set(records.map((r) => r.returnId).filter(Boolean)),
@@ -876,7 +877,7 @@ export async function handlePush(
     });
   }
 
-  // ← added: saleReturnItem: skip records whose parent saleReturn doesn't exist yet
+  // â† added: saleReturnItem: skip records whose parent saleReturn doesn't exist yet
   if (isSaleReturnItem) {
     const returnIds = [
       ...new Set(records.map((r) => r.returnId).filter(Boolean)),
@@ -1004,7 +1005,9 @@ export async function handlePush(
   if (isRateType) {
     validRecords = validRecords.map((record) => ({
       ...record,
-      code: String(record.code ?? "").trim().toUpperCase(),
+      code: String(record.code ?? "")
+        .trim()
+        .toUpperCase(),
       name: String(record.name ?? "").trim(),
       isDefault:
         Boolean(record.isDefault) &&
@@ -1041,7 +1044,7 @@ export async function handlePush(
 
   if (validRecords.length === 0) return results;
 
-  // ── Pre-fetch existing records ────────────────────────────────────────────
+  // â”€â”€ Pre-fetch existing records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let existingMap = new Map<string, any>();
 
   if (isShopSettings) {
@@ -1095,7 +1098,7 @@ export async function handlePush(
     existingMap = new Map(existing.map((r: any) => [r.id, r]));
   }
 
-  // ── Decide create vs update ───────────────────────────────────────────────
+  // â”€â”€ Decide create vs update â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const toCreate: any[] = [];
   const toUpdate: { where: any; data: any; resultId: string }[] = [];
 
@@ -1185,7 +1188,7 @@ export async function handlePush(
           ...(hasSyncStatus ? { isSynced: true, syncedAt: serverNow } : {}),
         };
 
-        // ✅ Inject cloud user UUID for sale records — overwrites any incoming
+        // âœ… Inject cloud user UUID for sale records â€” overwrites any incoming
         // desktop userId which is not a valid Neon UUID
         if ((entity === "sale" || entity === "quotation") && cloudUserId) {
           createData.userId = cloudUserId;
@@ -1200,7 +1203,7 @@ export async function handlePush(
         ...(hasSyncStatus ? { isSynced: true, syncedAt: serverNow } : {}),
       };
 
-      // ✅ Also overwrite userId on update to keep cloud UUID consistent
+      // âœ… Also overwrite userId on update to keep cloud UUID consistent
       if ((entity === "sale" || entity === "quotation") && cloudUserId) {
         updateData.userId = cloudUserId;
       }
@@ -1223,7 +1226,7 @@ export async function handlePush(
     }
   }
 
-  // ── Single transaction ────────────────────────────────────────────────────
+  // â”€â”€ Single transaction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   // Categories must be created parent-first to avoid FK violations
   if (entity === "category") {
@@ -1246,9 +1249,7 @@ export async function handlePush(
               id: entry.where.id,
               ...entry.data,
             })),
-          ].find(
-            (data) => data.isDefault && data.isActive && !data.deletedAt,
-          )
+          ].find((data) => data.isDefault && data.isActive && !data.deletedAt)
         : null;
       if (incomingDefault) {
         await tx.rateType.updateMany({
@@ -1364,7 +1365,12 @@ export async function handlePush(
 
       if (entity === "productRate" || entity === "productBatchRate") {
         const currentDefault = await tx.rateType.findFirst({
-          where: { licenseId, isDefault: true, isActive: true, deletedAt: null },
+          where: {
+            licenseId,
+            isDefault: true,
+            isActive: true,
+            deletedAt: null,
+          },
           orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
         });
         if (currentDefault && entity === "productRate") {
@@ -1466,7 +1472,11 @@ export async function handlePush(
         for (const rate of productRates) {
           await tx.product.update({
             where: { id: rate.productId },
-            data: { salePrice: rate.amount, updatedAt: serverNow, isSynced: true },
+            data: {
+              salePrice: rate.amount,
+              updatedAt: serverNow,
+              isSynced: true,
+            },
           });
         }
         await tx.productBatch.updateMany({
@@ -1517,7 +1527,7 @@ export async function handlePush(
   return results;
 }
 
-// ── Pull ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Pull â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function handlePull(
   entity: SyncableModel,
@@ -1564,7 +1574,7 @@ export async function handlePull(
   }
 
   if (entity === "purchaseItem") {
-    // purchaseItem has no licenseId — scope through parent purchase
+    // purchaseItem has no licenseId â€” scope through parent purchase
     const where: any = {
       purchase: { licenseId },
       ...(since ? { updatedAt: { gt: new Date(since) } } : {}),
@@ -1646,7 +1656,7 @@ export async function handlePull(
     return { records, hasMore, pulledAt };
   }
 
-  // ← added
+  // â† added
   if (entity === "purchaseReturn") {
     const where: any = { licenseId };
     if (since) where.updatedAt = { gt: new Date(since) };
@@ -1660,9 +1670,9 @@ export async function handlePull(
     return { records, hasMore, pulledAt };
   }
 
-  // ← added
+  // â† added
   if (entity === "purchaseReturnItem") {
-    // purchaseReturnItem has no licenseId — scope through parent purchaseReturn
+    // purchaseReturnItem has no licenseId â€” scope through parent purchaseReturn
     const where: any = {
       purchaseReturn: { licenseId },
       ...(since ? { updatedAt: { gt: new Date(since) } } : {}),
@@ -1677,7 +1687,7 @@ export async function handlePull(
     return { records, hasMore, pulledAt };
   }
 
-  // ← added
+  // â† added
   if (entity === "saleReturn") {
     const where: any = { licenseId };
     if (since) where.updatedAt = { gt: new Date(since) };
@@ -1691,9 +1701,9 @@ export async function handlePull(
     return { records, hasMore, pulledAt };
   }
 
-  // ← added
+  // â† added
   if (entity === "saleReturnItem") {
-    // saleReturnItem has no licenseId — scope through parent saleReturn
+    // saleReturnItem has no licenseId â€” scope through parent saleReturn
     const where: any = {
       saleReturn: { licenseId },
       ...(since ? { updatedAt: { gt: new Date(since) } } : {}),
@@ -1708,7 +1718,7 @@ export async function handlePull(
     return { records, hasMore, pulledAt };
   }
 
-  // ← added
+  // â† added
   if (entity === "quotation") {
     const where: any = { licenseId };
     if (since) where.updatedAt = { gt: new Date(since) };
