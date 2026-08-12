@@ -13,6 +13,7 @@ const prisma = new PrismaClient();
 function makePurchaseBatchNo(
   billNo: string | null | undefined,
   purchaseDate: string | Date,
+  slNo: number,
 ): string {
   const rawBill = String(billNo || "NO-BILL")
     .trim()
@@ -22,7 +23,8 @@ function makePurchaseBatchNo(
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
-  return `PB-${rawBill}-${dd}-${mm}-${yyyy}`;
+  const serial = String(Number(slNo || 0)).padStart(5, "0");
+  return `PB-${rawBill}-${dd}-${mm}-${yyyy}-${serial}`;
 }
 
 function toTaxPercent(v: string): TaxPercent {
@@ -78,41 +80,63 @@ async function resolveOrCreateBatch(
     receivedAt?: Date;
   },
 ) {
-  // 1. If barcode provided, check if it already exists (must be same product)
+  // A barcode identifies a product and may be reused by several receipt lots.
   if (barcode) {
-    const existing = await tx.productBatch.findFirst({
-      where: { licenseId, barcode, deletedAt: null },
-    });
-    if (existing) {
-      if (existing.productId !== productId) {
-        throw new Error(
-          `BARCODE_IN_USE: Barcode ${barcode} already belongs to another product`,
-        );
-      }
-      return existing;
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(barcode)) {
+      throw new Error(`INVALID_BARCODE: ${barcode}`);
     }
-  }
+    const codeConflict = await tx.product.findFirst({
+      where: {
+        licenseId,
+        code: barcode,
+        id: { not: productId },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (codeConflict) {
+      throw new Error(
+        `BARCODE_IN_USE: Barcode ${barcode} is reserved as another item's code`,
+      );
+    }
+    const conflict = await tx.productBatch.findFirst({
+      where: { licenseId, barcode, productId: { not: productId }, deletedAt: null },
+    });
+    if (conflict) {
+      throw new Error(
+        `BARCODE_IN_USE: Barcode ${barcode} already belongs to another product`,
+      );
+    }
 
-  // 2. Try to find by purchaseBatchNo + identity fields (group merge)
-  if (purchaseBatchNo) {
-    const existing = await tx.productBatch.findFirst({
+    const alias = await tx.productBatch.findFirst({
       where: {
         licenseId,
         productId,
-        purchaseBatchNo,
+        barcode,
+        purchaseId: null,
         deletedAt: null,
-        ...(barcode !== undefined ? { barcode: barcode ?? null } : {}),
-        mrp: mrp ?? null,
-        salePrice: salePrice ?? null,
-        batchNo: batchNo ?? null,
-        mfgDate: mfgDate ?? null,
-        expiryDate: expiryDate ?? null,
       },
     });
-    if (existing) return existing;
+    if (!alias) {
+      await tx.productBatch.create({
+        data: {
+          id: uuidv4(),
+          licenseId,
+          productId,
+          barcode,
+          mrp: mrp != null ? mrp : null,
+          salePrice: salePrice != null ? salePrice : null,
+          costPrice: costPrice != null ? costPrice : null,
+          receivedAt: receivedAt ?? new Date(),
+          stock: 0,
+          isSystemGeneratedBarcode: false,
+        },
+      });
+    }
   }
 
-  // 3. Create new batch
+  // Every distinct purchase line is a stock lot. Lots share the reusable
+  // product barcode, while purchaseId keeps their stock and history separate.
   return tx.productBatch.create({
     data: {
       id: uuidv4(),
@@ -337,26 +361,90 @@ export interface PurchaseItemInput {
   expiryDate?: string | null;
   lineNo?: number;
   isFree?: boolean | number;
+  batchId?: string | null;
   profitPercent?: number;
   sellingRatesJson?: string | null;
+}
+
+function normalizedIdentityText(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  return text || null;
+}
+
+function normalizedRateSnapshot(value: unknown): string | null {
+  if (!value) return null;
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    if (!Array.isArray(parsed)) return String(value);
+    return JSON.stringify(
+      [...parsed].sort((a, b) =>
+        String(a?.rateTypeId || a?.code || "").localeCompare(
+          String(b?.rateTypeId || b?.code || ""),
+        ),
+      ),
+    );
+  } catch {
+    return String(value);
+  }
+}
+
+function mergeIdenticalPurchaseItems(
+  items: PurchaseItemInput[],
+): PurchaseItemInput[] {
+  const grouped = new Map<string, PurchaseItemInput>();
+  for (const item of items) {
+    const discountType = item.discountType ?? "ABS";
+    const key = JSON.stringify({
+      productId: item.productId,
+      barcode: normalizedIdentityText(item.barcode),
+      unit: item.unit,
+      rate: Number(item.rate || 0),
+      mrp: item.mrp == null ? null : Number(item.mrp),
+      taxPercent: item.taxPercent,
+      discountType,
+      discount: Number(item.discount || 0),
+      salePrice: item.salePrice == null ? null : Number(item.salePrice),
+      profitPercent: Number(item.profitPercent || 0),
+      batchNo: normalizedIdentityText(item.batchNo),
+      mfgDate: normalizedIdentityText(item.mfgDate),
+      expiryDate: normalizedIdentityText(item.expiryDate),
+      isFree: Boolean(item.isFree),
+      sellingRatesJson: normalizedRateSnapshot(item.sellingRatesJson),
+    });
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...item, lineNo: grouped.size + 1 });
+      continue;
+    }
+    existing.quantity = Number(existing.quantity || 0) + Number(item.quantity || 0);
+    if (discountType === "ABS") {
+      existing.discount = Number(existing.discount || 0) + Number(item.discount || 0);
+    }
+  }
+  return Array.from(grouped.values());
 }
 
 export async function createPurchase(
   purchase: CreatePurchaseInput,
   items: PurchaseItemInput[],
 ) {
+  items = mergeIdenticalPurchaseItems(items);
   const { licenseId } = purchase;
   const now = new Date();
   const purchaseDate = purchase.purchaseDate
     ? new Date(purchase.purchaseDate)
     : now;
-  const purchaseBatchNo = makePurchaseBatchNo(purchase.billNo, purchaseDate);
   const newId = uuidv4();
 
   let totalAmount = 0;
 
   const result = await prisma.$transaction(async (tx) => {
     const slNo = await getNextSlNo(tx, licenseId);
+    const purchaseBatchNo = makePurchaseBatchNo(
+      purchase.billNo,
+      purchaseDate,
+      slNo,
+    );
 
     // Validate supplier exists if CREDIT
     let validSupplierId: string | null = null;
@@ -442,7 +530,7 @@ export async function createPurchase(
         mrp: item.mrp ?? null,
         salePrice: salePrice ?? null,
         costPrice: item.rate,
-        batchNo: purchaseBatchNo,
+        batchNo: item.batchNo ?? null,
         purchaseBatchNo,
         purchaseId: newId,
         mfgDate: item.mfgDate ?? null,
@@ -483,7 +571,7 @@ export async function createPurchase(
           totalCost,
           billedValue,
           effectiveUnitValue,
-          batchNo: purchaseBatchNo,
+          batchNo: item.batchNo ?? null,
           batchId: batch.id,
           purchaseBatchNo,
           mfgDate: item.mfgDate ?? null,
@@ -560,6 +648,7 @@ export async function updatePurchase(
   header: Omit<CreatePurchaseInput, "licenseId">,
   items: PurchaseItemInput[],
 ) {
+  items = mergeIdenticalPurchaseItems(items);
   const now = new Date();
 
   await prisma.$transaction(async (tx) => {
@@ -575,6 +664,7 @@ export async function updatePurchase(
     const purchaseBatchNo = makePurchaseBatchNo(
       header.billNo ?? existing.billNo,
       purchaseDate,
+      Number(existing.slNo || 0),
     );
 
     // Reverse stock from old items
@@ -648,7 +738,7 @@ export async function updatePurchase(
         mrp: item.mrp ?? null,
         salePrice: salePrice ?? null,
         costPrice: item.rate,
-        batchNo: purchaseBatchNo,
+        batchNo: item.batchNo ?? null,
         purchaseBatchNo,
         purchaseId: id,
         mfgDate: item.mfgDate ?? null,
@@ -687,7 +777,7 @@ export async function updatePurchase(
           totalCost,
           billedValue,
           effectiveUnitValue,
-          batchNo: purchaseBatchNo,
+          batchNo: item.batchNo ?? null,
           batchId: batch.id,
           purchaseBatchNo,
           mfgDate: item.mfgDate ?? null,

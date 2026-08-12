@@ -934,6 +934,57 @@ export async function handlePush(
         return false;
       }
 
+      const barcode = String(r.barcode || "").trim();
+      if (barcode && !/^[A-Za-z0-9_-]{1,50}$/.test(barcode)) {
+        results.push({ id: r.id, accepted: false, serverUpdatedAt: serverNow });
+        return false;
+      }
+
+      return true;
+    });
+
+    const barcodeRecords = validRecords.filter(
+      (record) => !record.deletedAt && String(record.barcode || "").trim(),
+    );
+    const barcodes = [
+      ...new Set(barcodeRecords.map((record) => String(record.barcode).trim())),
+    ];
+    const [existingBarcodeRows, reservedItemCodes] = barcodes.length
+      ? await Promise.all([
+          prisma.productBatch.findMany({
+            where: { licenseId, barcode: { in: barcodes }, deletedAt: null },
+            select: { id: true, productId: true, barcode: true },
+          }),
+          prisma.product.findMany({
+            where: { licenseId, code: { in: barcodes }, deletedAt: null },
+            select: { id: true, code: true },
+          }),
+        ])
+      : [[], []];
+
+    validRecords = validRecords.filter((record) => {
+      const barcode = String(record.barcode || "").trim();
+      if (!barcode || record.deletedAt) return true;
+      const incomingConflict = barcodeRecords.some(
+        (other) =>
+          other.id !== record.id &&
+          String(other.barcode || "").trim() === barcode &&
+          other.productId !== record.productId,
+      );
+      const storedConflict = existingBarcodeRows.some(
+        (other) =>
+          other.id !== record.id &&
+          String(other.barcode || "").trim() === barcode &&
+          other.productId !== record.productId,
+      );
+      const itemCodeConflict = reservedItemCodes.some(
+        (product) =>
+          String(product.code) === barcode && product.id !== record.productId,
+      );
+      if (incomingConflict || storedConflict || itemCodeConflict) {
+        results.push({ id: record.id, accepted: false, serverUpdatedAt: serverNow });
+        return false;
+      }
       return true;
     });
   }

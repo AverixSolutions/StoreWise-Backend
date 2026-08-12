@@ -618,6 +618,9 @@ export async function convertQuotationToSale(
       });
       validCustomerId = cust ? quotation.customerId : null;
     }
+    if (saleType === "CREDIT" && !validCustomerId) {
+      throw new Error("Customer is required for CREDIT sales.");
+    }
 
     await tx.sale.create({
       data: {
