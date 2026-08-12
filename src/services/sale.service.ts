@@ -150,6 +150,9 @@ export async function createSale(
       });
       validCustomerId = cust ? sale.customerId : null;
     }
+    if (sale.saleType !== "CASH" && !validCustomerId) {
+      throw new Error("Customer is required for CREDIT sales.");
+    }
 
     await tx.sale.create({
       data: {
@@ -426,6 +429,10 @@ export async function updateSale(
       });
       validCustomerId = cust ? customerId : null;
     }
+    const effectiveSaleType = header.saleType ?? existing.saleType;
+    if (effectiveSaleType !== "CASH" && !validCustomerId) {
+      throw new Error("Customer is required for CREDIT sales.");
+    }
 
     let totalAmount = 0;
 
@@ -584,7 +591,7 @@ export async function updateSale(
         offerOverridesJson:
           header.offerOverridesJson ?? existing.offerOverridesJson,
         totalAmount,
-        saleType: header.saleType ?? (existing.saleType as any),
+        saleType: effectiveSaleType as any,
         updatedAt: now,
         isSynced: false,
         typeId: header.typeId ?? null,
@@ -601,7 +608,7 @@ export async function updateSale(
       data: { deletedAt: now, updatedAt: now, isSynced: false, syncedAt: null },
     });
 
-    const saleType = header.saleType ?? existing.saleType;
+    const saleType = effectiveSaleType;
 
     if (saleType !== "CASH" && validCustomerId) {
       await tx.customerTransaction.create({
